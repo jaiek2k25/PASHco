@@ -330,6 +330,61 @@ export async function aiStudyPack(sourceText, title = 'My study set') {
   }
 }
 
+/**
+ * Build a study pack from a long document.
+ *
+ * Short material goes straight to one request. Long material is read in chunks,
+ * each chunk condensed by the model, and the condensed notes are then used to
+ * write the pack — so a 200-page PDF is actually covered instead of the first
+ * 30k characters only.
+ */
+export async function aiStudyPackFromDocument(sourceText, title = 'My study set', { onProgress } = {}) {
+  const text = String(sourceText || '')
+  if (text.length <= 28000) {
+    onProgress?.({ stage: 'generating', done: 0, total: 1 })
+    const pack = await aiStudyPack(text, title)
+    onProgress?.({ stage: 'done', done: 1, total: 1 })
+    return pack
+  }
+
+  const { splitIntoChunks } = await import('./fileExtract')
+  const chunks = splitIntoChunks(text, 12000, 12)
+  const notes = []
+  const total = chunks.length + 1
+  let noKey = false
+  for (let index = 0; index < chunks.length; index += 1) {
+    if (noKey) break
+    onProgress?.({ stage: 'reading', done: index, total })
+    try {
+      const data = await requestAi('notes', {
+        course: title,
+        transcript: `Part ${index + 1} of ${chunks.length}:\n\n${chunks[index]}`,
+      })
+      const summary = cleanString(data.summary, '')
+      const points = ensureArray(data.keyPoints, []).map((point) => cleanString(point, '')).filter(Boolean)
+      const terms = ensureArray(data.keywords, []).map((term) => cleanString(term, '')).filter(Boolean)
+      if (summary || points.length) {
+        notes.push([`Part ${index + 1}`, summary, ...points.map((point) => `- ${point}`), terms.length ? `Terms: ${terms.join(', ')}` : ''].filter(Boolean).join('\n'))
+      }
+    } catch (error) {
+      // Without a key every chunk would fail the same way: stop early and let
+      // the local engine handle the material in one pass.
+      if (error?.noKey) {
+        noKey = true
+        break
+      }
+      // Any other failure should not discard the rest of the document.
+      notes.push(`Part ${index + 1} (unread)\n${chunks[index].slice(0, 1200)}`)
+    }
+  }
+
+  onProgress?.({ stage: 'generating', done: total - 1, total })
+  const digest = notes.join('\n\n').slice(0, 28000)
+  const pack = await aiStudyPack(digest || text.slice(0, 28000), title)
+  onProgress?.({ stage: 'done', done: total, total })
+  return { ...pack, deepRead: true, sectionsRead: chunks.length }
+}
+
 export async function aiResearch(topic, sources = [], targetWords = 700) {
   const fallback = generateResearchReport(topic, sources, targetWords)
   try {
@@ -401,6 +456,29 @@ export async function aiOcr(imageDataUrl) {
     return cleanString(data.text || data.transcription || '', '')
   } catch {
     return ''
+  }
+}
+
+/**
+ * OCR that tells the caller why it failed, so the upload UI can explain it
+ * instead of silently producing an empty study set.
+ */
+export async function readImageText(imageDataUrl) {
+  try {
+    const data = await requestAi('ocr', { image: imageDataUrl }, { vision: true })
+    const text = cleanString(data.text || data.transcription || '', '')
+    if (!text) {
+      return { ok: false, code: 'EMPTY_OCR', error: 'No readable text was found in that image.' }
+    }
+    return { ok: true, text, subject: cleanString(data.subject, '') }
+  } catch (error) {
+    return {
+      ok: false,
+      code: error.code || 'OCR_FAILED',
+      error: error.code === 'NO_API_KEY'
+        ? 'Connect an AI key in Settings to read text from images.'
+        : error.message || 'Could not read that image.',
+    }
   }
 }
 

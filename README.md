@@ -81,6 +81,31 @@ Ready-made configs are in the repo: **`Dockerfile`** + **`fly.toml`** (Fly.io, 1
 **`render.yaml`** (Render blueprint), and a generic container path for Railway or a VPS.
 Full instructions, including the post-deploy checklist, are in **[DEPLOY.md](DEPLOY.md)**.
 
+## Reading uploaded documents
+
+Uploads are parsed **in the browser** — the file never leaves the device just to be read.
+
+| Format | How it is read |
+| --- | --- |
+| PDF | `pdfjs-dist` text layer, line-grouped by position |
+| Word `.docx` | `mammoth`, keeping headings, lists, and tables |
+| PowerPoint `.pptx` | slide XML, plus speaker notes |
+| Excel `.xlsx` | shared strings and sheet rows |
+| TXT / MD / CSV / JSON / HTML / RTF | direct text (HTML scripts and styles stripped) |
+| Images | downscaled on canvas, then transcribed by the vision model (needs a key) |
+| Legacy `.doc` / `.ppt` / `.xls` | refused with instructions to re-save as a modern format |
+
+Long documents are not silently cut off. Anything over ~28k characters is split into chunks,
+each chunk is summarised through the AI, and the summaries are combined to write the study set —
+so a 40-page PDF contributes all of its pages, not just the first few. Extremely long files are
+capped at 12 chunks and the UI says so.
+
+Documents can be added when creating flashcards, quizzes, study guides, or exam prep, when
+asking the solver a question, and when creating a whiteboard lesson.
+
+The parsers are dynamically imported: a visitor who never uploads a PDF never downloads the PDF
+engine (the main bundle is unchanged in practice).
+
 ## AI keys: one per user
 
 WeSolve does not ship a shared key. **Every user connects their own**, so each person pays for

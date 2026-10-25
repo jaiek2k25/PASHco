@@ -6,7 +6,8 @@ import ToolTabs from '../components/ToolTabs'
 import SolutionGraph from '../components/SolutionGraph'
 import { Badge, Button, Modal, Segmented } from '../components/Common'
 import { useApp } from '../context/AppContext'
-import { createFollowupAnswer, createId, extractTextFromFile, sampleProblems, truncate, wordCount } from '../lib/intelligence'
+import { createFollowupAnswer, createId, sampleProblems, truncate, wordCount } from '../lib/intelligence'
+import { extractDocumentText } from '../lib/fileExtract'
 import { aiOcr, aiSolve, aiTutorAnswer, blobUrlToDataUrl, getLastAiError } from '../lib/aiClient'
 import { getServiceSettings } from '../lib/serviceSettings'
 
@@ -147,6 +148,7 @@ export default function SolverPage() {
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('answer')
   const [attachments, setAttachments] = useState([])
+  const [reading, setReading] = useState('')
   const [link, setLink] = useState('')
   const [linkOpen, setLinkOpen] = useState(false)
   const [calculatorOpen, setCalculatorOpen] = useState(false)
@@ -234,15 +236,27 @@ export default function SolverPage() {
         url: file.type.startsWith('image/') ? URL.createObjectURL(file) : '',
       }
       next.push(attachment)
-      if (/\.(txt|md|csv)$/i.test(file.name) || file.type.startsWith('text/')) {
-        try {
-          const text = await extractTextFromFile(file)
+
+      if (attachment.isImage) continue
+
+      // PDF, Word, PowerPoint, Excel, and plain text are all read locally so the
+      // solver receives the actual document instead of just its file name.
+      try {
+        const result = await extractDocumentText(file, {
+          onProgress: ({ page, pages }) => setReading(`${file.name} · page ${page}/${pages}`),
+        })
+        const text = result.text || ''
+        if (text.trim()) {
           attachment.textContent = text.slice(0, 12000)
+          attachment.pages = result.pages
+          attachment.characters = text.length
           setInput((current) => `${current}${current ? '\n' : ''}${text.slice(0, 3000)}`)
-          toast(`${file.name} text added to the composer.`)
-        } catch {
-          toast(`Could not read ${file.name}.`, 'error')
+          toast(`${file.name}: ${text.length.toLocaleString()} characters added${result.pages ? ` from ${result.pages} pages` : ''}.`)
         }
+      } catch (error) {
+        toast(error.message || `Could not read ${file.name}.`, 'error')
+      } finally {
+        setReading('')
       }
     }
     if (next.length) {
@@ -353,7 +367,7 @@ export default function SolverPage() {
     setVideoStep(0)
   }
 
-  const accepted = useMemo(() => uploadKind === 'images' ? 'image/*' : '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,.csv,image/*', [uploadKind])
+  const accepted = useMemo(() => (uploadKind === 'images' ? 'image/*' : '.pdf,.docx,.pptx,.xlsx,.txt,.md,.markdown,.csv,.tsv,.json,.html,.htm,.rtf,.tex,image/*'), [uploadKind])
 
   return (
     <div className="solver-page app-page">
@@ -386,11 +400,21 @@ export default function SolverPage() {
                   {attachments.map((attachment) => (
                     <div className="attachment-chip" key={attachment.id}>
                       {attachment.isImage ? <img src={attachment.url} alt="" /> : attachment.isLink ? <Link2 size={16} /> : <Paperclip size={16} />}
-                      <div><strong>{truncate(attachment.name, 26)}</strong><small>{attachment.isLink ? 'Web source' : formatSize(attachment.size)}</small></div>
+                      <div>
+                        <strong>{truncate(attachment.name, 26)}</strong>
+                        <small>{attachment.isLink
+                          ? 'Web source'
+                          : attachment.characters
+                            ? `${attachment.characters.toLocaleString()} chars${attachment.pages ? ` · ${attachment.pages} pages` : ''}`
+                            : formatSize(attachment.size)}</small>
+                      </div>
                       <button onClick={() => setAttachments((items) => items.filter((item) => item.id !== attachment.id))} aria-label="Remove attachment"><X size={14} /></button>
                     </div>
                   ))}
                 </div>
+              )}
+              {reading && (
+                <p className="attachment-reading"><LoaderCircle size={13} className="spin" /> Reading {reading}…</p>
               )}
               <div className="composer-bottom">
                 <div className="composer-tools">

@@ -462,3 +462,25 @@ label { font-weight: 600; }
 .saved-key-row { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 10px 12px; border: 1px dashed #cfd7ee; border-radius: 10px; background: #fbfcff; margin-bottom: 10px; }
 .saved-key-hint { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; color: #20232e; }
 .saved-key-note { font-size: 12.5px; color: #6b7280; }
+
+/* Uploaded source files */
+.source-file-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.source-file { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid #e4e7f2; border-radius: 12px; background: #fff; }
+.source-file.is-reading { border-color: #d9e1fb; background: #fbfcff; }
+.source-file.is-ready { border-color: #bfe8cf; background: #f7fdf9; }
+.source-file.is-error { border-color: #fecdca; background: #fffafa; }
+.source-file-icon { flex: 0 0 auto; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; background: #eef1fb; color: #3155ff; }
+.source-file.is-ready .source-file-icon { background: #e7f8ee; color: #16a672; }
+.source-file.is-error .source-file-icon { background: #fdecea; color: #b42318; }
+.source-file-body { flex: 1 1 auto; min-width: 0; }
+.source-file-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.source-file-head strong { font-size: 13.5px; color: #20232e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.source-file-kind { font-size: 11.5px; color: #7a8194; }
+.source-file-status { display: flex; align-items: center; gap: 6px; margin: 3px 0 0; font-size: 12.5px; color: #5c6272; }
+.source-file.is-ready .source-file-status { color: #146b3f; }
+.source-file.is-error .source-file-status { color: #b42318; }
+.source-file-remove { flex: 0 0 auto; background: none; border: 0; padding: 4px; border-radius: 6px; color: #8a90a3; cursor: pointer; display: grid; place-items: center; }
+.source-file-remove:hover { background: #f1f3f9; color: #20232e; }
+.source-material-summary { display: grid; gap: 2px; margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; background: #f5f7fe; border: 1px solid #e2e8fb; font-size: 12.5px; color: #414a63; }
+.source-material-summary strong { font-size: 13px; color: #20232e; }
+.source-material-summary.is-truncated { background: #fffbf2; border-color: #f6e3bd; }

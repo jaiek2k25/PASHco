@@ -8,7 +8,8 @@ import ToolTabs from '../components/ToolTabs'
 import { Badge, Button, Modal, ProgressBar } from '../components/Common'
 import { useApp } from '../context/AppContext'
 import { createId, downloadText, safeFileName, tutorLessons, tutorWhiteboards } from '../lib/intelligence'
-import { aiLesson, aiTutorAnswer } from '../lib/aiClient'
+import { aiLesson, aiTutorAnswer, readImageText } from '../lib/aiClient'
+import { extractDocumentText } from '../lib/fileExtract'
 
 const BOARD_W = 1000
 const BOARD_H = 620
@@ -262,6 +263,7 @@ export default function TutorPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [createTopic, setCreateTopic] = useState('')
   const [createMaterial, setCreateMaterial] = useState('')
+  const [readingMaterial, setReadingMaterial] = useState('')
   const [creating, setCreating] = useState(false)
 
   const studioRef = useRef(null)
@@ -623,15 +625,33 @@ export default function TutorPage() {
     toast(newLesson.source === 'nvidia' ? 'Your whiteboard lesson is ready.' : 'Lesson created with the local engine.')
   }
 
-  const readMaterialFile = (file) => {
+  const readMaterialFile = async (file) => {
     if (!file) return
-    if (!/\.(txt|md|csv)$/i.test(file.name)) {
-      toast('For the whiteboard, upload a TXT, Markdown, or CSV file. PDF text can be pasted instead.', 'error')
-      return
+    setReadingMaterial(file.name)
+    try {
+      const result = await extractDocumentText(file)
+      const text = result.text || ''
+      if (!text.trim()) {
+        // An image can still be transcribed by the vision model.
+        if (result.meta?.needsOcr) {
+          const ocr = await readImageText(result.image)
+          if (!ocr.ok) {
+            toast(ocr.error, 'error')
+            return
+          }
+          setCreateMaterial((current) => `${current}${current ? '\n\n' : ''}${ocr.text}`.slice(0, 16000))
+          return
+        }
+        toast('No readable text was found in that file.', 'error')
+        return
+      }
+      setCreateMaterial((current) => `${current}${current ? '\n\n' : ''}${text}`.slice(0, 16000))
+      toast(`${file.name}: ${Math.min(text.length, 16000).toLocaleString()} characters loaded.`)
+    } catch (error) {
+      toast(error.message || 'Could not read that file.', 'error')
+    } finally {
+      setReadingMaterial('')
     }
-    const reader = new FileReader()
-    reader.onload = () => setCreateMaterial(String(reader.result || '').slice(0, 16000))
-    reader.readAsText(file)
   }
 
   const replay = () => {
@@ -972,8 +992,12 @@ export default function TutorPage() {
           <label className="field-label"><span>Your notes or source text <small>optional</small></span><textarea rows="5" value={createMaterial} onChange={(event) => setCreateMaterial(event.target.value)} placeholder="Paste lecture notes, a problem statement, or the passage you want to learn." /></label>
           <label className="wb-upload">
             <Upload size={16} />
-            <span>{createMaterial ? `${createMaterial.length.toLocaleString()} characters loaded` : 'Upload a TXT, Markdown, or CSV file'}</span>
-            <input type="file" accept=".txt,.md,.csv,text/plain,text/markdown,text/csv" onChange={(event) => readMaterialFile(event.target.files?.[0])} />
+            <span>{readingMaterial
+              ? `Reading ${readingMaterial}…`
+              : createMaterial
+                ? `${createMaterial.length.toLocaleString()} characters loaded`
+                : 'Upload a PDF, Word, PowerPoint, Excel, TXT, or image'}</span>
+            <input type="file" accept=".pdf,.docx,.pptx,.xlsx,.txt,.md,.markdown,.csv,.tsv,.json,.html,.htm,.rtf,.tex,image/*" onChange={(event) => { readMaterialFile(event.target.files?.[0]); event.target.value = '' }} />
           </label>
           <p className="modal-hint">With an NVIDIA key connected, the lesson is written by AI. Without one, the local engine builds the board from your question.</p>
         </div>

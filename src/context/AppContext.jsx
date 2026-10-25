@@ -44,7 +44,7 @@ function loadState() {
   }
 }
 
-const AppContext = createContext(null)
+export const AppContext = createContext(null)
 
 export function AppProvider({ children }) {
   const [state, setState] = useState(loadState)

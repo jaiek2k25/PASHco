@@ -282,12 +282,37 @@ export default function TutorPage() {
   const stepPct = ((step + 1) / totalSteps) * 100
   const atEnd = step === totalSteps - 1
 
+  const getBoardMap = useCallback(() => {
+    const svg = document.querySelector('.wb-ink')
+    const canvas = canvasRef.current
+    if (!svg || !canvas) return null
+    const rect = svg.getBoundingClientRect()
+    if (!rect.width || !rect.height) return null
+    const scale = Math.min(rect.width / BOARD_W, rect.height / BOARD_H)
+    const offsetX = (rect.width - BOARD_W * scale) / 2
+    const offsetY = (rect.height - BOARD_H * scale) / 2
+    return {
+      rect,
+      scale,
+      offsetX,
+      offsetY,
+      sx: canvas.width / (canvas.clientWidth || rect.width),
+      sy: canvas.height / (canvas.clientHeight || rect.height),
+    }
+  }, [])
+
+  const toCanvas = useCallback((point, map) => ({
+    x: (map.offsetX + point.x * map.scale) * map.sx,
+    y: (map.offsetY + point.y * map.scale) * map.sy,
+  }), [])
+
   const redraw = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    const ratio = canvas.width / (canvas.clientWidth || 1)
+    const map = getBoardMap()
+    if (!map) return
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
@@ -297,16 +322,18 @@ export default function TutorPage() {
       ctx.globalCompositeOperation = stroke.tool === 'eraser' ? 'destination-out' : 'source-over'
       ctx.globalAlpha = stroke.tool === 'highlighter' ? 0.25 : 1
       ctx.strokeStyle = stroke.color
-      ctx.lineWidth = stroke.size * ratio
-      ctx.moveTo(stroke.points[0].x * ratio, stroke.points[0].y * ratio)
+      ctx.lineWidth = stroke.size * map.scale * map.sx
+      const start = toCanvas(stroke.points[0], map)
+      ctx.moveTo(start.x, start.y)
       for (let index = 1; index < stroke.points.length; index += 1) {
-        ctx.lineTo(stroke.points[index].x * ratio, stroke.points[index].y * ratio)
+        const next = toCanvas(stroke.points[index], map)
+        ctx.lineTo(next.x, next.y)
       }
       ctx.stroke()
     }
     ctx.globalAlpha = 1
     ctx.globalCompositeOperation = 'source-over'
-  }, [strokes])
+  }, [strokes, getBoardMap, toCanvas])
 
   const sizeCanvas = useCallback(() => {
     const canvas = canvasRef.current
@@ -406,11 +433,13 @@ export default function TutorPage() {
   }, [])
 
   const getPoint = (event) => {
-    const canvas = canvasRef.current
-    const rect = canvas.getBoundingClientRect()
+    const map = getBoardMap()
+    if (!map) return { x: 0, y: 0 }
+    const localX = event.clientX - map.rect.left
+    const localY = event.clientY - map.rect.top
     return {
-      x: ((event.clientX - rect.left) / rect.width) * BOARD_W,
-      y: ((event.clientY - rect.top) / rect.height) * BOARD_H,
+      x: Math.max(0, Math.min(BOARD_W, (localX - map.offsetX) / map.scale)),
+      y: Math.max(0, Math.min(BOARD_H, (localY - map.offsetY) / map.scale)),
     }
   }
 
@@ -425,21 +454,23 @@ export default function TutorPage() {
     pointer.current.points.push(getPoint(event))
     const canvas = canvasRef.current
     const ctx = canvas?.getContext('2d')
-    if (!ctx) return
+    const map = getBoardMap()
+    if (!ctx || !map) return
     const points = pointer.current.points
-    const ratio = canvas.width / canvas.clientWidth
     const last = points[points.length - 2]
     const current = points[points.length - 1]
     if (!last) return
+    const from = toCanvas(last, map)
+    const to = toCanvas(current, map)
     ctx.beginPath()
     ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over'
     ctx.globalAlpha = tool === 'highlighter' ? 0.25 : 1
     ctx.strokeStyle = ink
-    ctx.lineWidth = (tool === 'highlighter' ? brush * 3.4 : tool === 'eraser' ? brush * 4.5 : brush) * ratio
+    ctx.lineWidth = (tool === 'highlighter' ? brush * 3.4 : tool === 'eraser' ? brush * 4.5 : brush) * map.scale * map.sx
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
-    ctx.moveTo(last.x * ratio, last.y * ratio)
-    ctx.lineTo(current.x * ratio, current.y * ratio)
+    ctx.moveTo(from.x, from.y)
+    ctx.lineTo(to.x, to.y)
     ctx.stroke()
     ctx.globalAlpha = 1
     ctx.globalCompositeOperation = 'source-over'
@@ -648,7 +679,14 @@ export default function TutorPage() {
       URL.revokeObjectURL(url)
     }
     const inkCanvas = canvasRef.current
-    if (inkCanvas) ctx.drawImage(inkCanvas, 0, 0, BOARD_W, BOARD_H)
+    const map = getBoardMap()
+    if (inkCanvas && map) {
+      const sourceX = map.offsetX * map.sx
+      const sourceY = map.offsetY * map.sy
+      const sourceW = BOARD_W * map.scale * map.sx
+      const sourceH = BOARD_H * map.scale * map.sy
+      ctx.drawImage(inkCanvas, sourceX, sourceY, sourceW, sourceH, 0, 0, BOARD_W, BOARD_H)
+    }
     const link = document.createElement('a')
     link.href = canvas.toDataURL('image/png')
     link.download = `${safeFileName(lesson.title)}-whiteboard.png`

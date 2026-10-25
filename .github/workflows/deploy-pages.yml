@@ -45,8 +45,18 @@ jobs:
       - name: SPA fallback
         run: cp dist/index.html dist/404.html && touch dist/.nojekyll
 
-      # Switches the repo from "serve a branch" to "deploy this artifact".
-      # Without it the site would publish raw source files instead of the build.
+      # Pages is probably configured to publish a branch, which serves the raw
+      # source index.html (it points at /src/main.jsx, so visitors get a blank
+      # page). The workflow token has pages:write, so flip the source to the
+      # artifact this job uploads. Safe to run every time.
+      - name: Point Pages at this workflow
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X PUT "repos/${{ github.repository }}/pages" -f build_type=workflow \
+            && echo "Pages source set to GitHub Actions."
+
       - uses: actions/configure-pages@v5
         with:
           enablement: true

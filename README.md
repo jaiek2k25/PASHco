@@ -81,9 +81,9 @@ Ready-made configs are in the repo: **`Dockerfile`** + **`fly.toml`** (Fly.io, 1
 **`render.yaml`** (Render blueprint), and a generic container path for Railway or a VPS.
 Full instructions, including the post-deploy checklist, are in **[DEPLOY.md](DEPLOY.md)**.
 
-A GitHub Pages workflow is also included for a static preview at
-`https://jaiek2k25.github.io/PASHco/`. That build runs entirely in the browser, so accounts and
-live AI are unavailable there — see [DEPLOY.md](DEPLOY.md).
+A GitHub Pages preview is at `https://jaiek2k25.github.io/PASHco/`. It runs entirely in the
+browser, so accounts and live AI are unavailable there — see [DEPLOY.md](DEPLOY.md). The committed
+`site/` folder is that build; regenerate it with `npm run build:pages` after changing app code.
 
 ## Reading uploaded documents
 

@@ -25,8 +25,13 @@
       @media (prefers-reduced-motion: reduce) { .boot-bar::after { animation: none; width: 100%; } }
     </style>
     <script>
-      // If a module fails to load or boot throws, show the reason instead of a white page.
+      // The dev server injects /src/main.jsx below. A statically hosted copy of
+      // this file (GitHub Pages) has no build step, so that request fails — load
+      // the prebuilt bundle from site/ instead of showing a blank page.
       (function () {
+        var bootTimer = null
+        var staticStarted = false
+
         function showBootError(message) {
           var box = document.getElementById('boot-error')
           if (!box || !document.getElementById('root') || !document.querySelector('.boot-splash')) return
@@ -35,17 +40,46 @@
           var hint = document.getElementById('boot-hint')
           if (hint) hint.textContent = 'Reload the page to try again.'
         }
+
+        function staticBase() {
+          // Directory of the current page: "/PASHco/" for a project site, "/" for a domain.
+          return location.pathname.replace(/[^/]*$/, '') + 'site/'
+        }
+
+        function loadStaticBuild() {
+          if (staticStarted) return true
+          staticStarted = true
+          if (bootTimer) clearTimeout(bootTimer)
+          var hint = document.getElementById('boot-hint')
+          if (hint) hint.textContent = 'Starting WeSolve…'
+          var base = staticBase()
+          var link = document.createElement('link')
+          link.rel = 'stylesheet'
+          link.href = base + 'app.css'
+          document.head.appendChild(link)
+          import(/* @vite-ignore */ base + 'app.js').catch(function (error) {
+            showBootError('Could not load the app build (' + base + 'app.js): ' + (error && error.message ? error.message : error))
+          })
+          return true
+        }
+
+        window.__wesolveLoadStaticBuild = loadStaticBuild
+
         window.addEventListener('error', function (event) {
           if (event && event.target && event.target !== window && event.target.tagName === 'SCRIPT') {
-            showBootError('Could not load ' + (event.target.src || 'an app script') + '.')
+            var src = event.target.src || ''
+            if (/\/src\/main\.jsx$/.test(src) && loadStaticBuild()) return
+            showBootError('Could not load ' + (src || 'an app script') + '.')
             return
           }
           showBootError((event && event.message) || 'The app could not start.')
         }, true)
+
         window.addEventListener('unhandledrejection', function (event) {
           showBootError('The app could not start: ' + ((event.reason && (event.reason.message || event.reason)) || 'unknown error'))
         })
-        window.setTimeout(function () {
+
+        bootTimer = window.setTimeout(function () {
           if (document.querySelector('.boot-splash') && !document.querySelector('.boot-error.is-visible')) {
             showBootError('The app is taking longer than expected to load.')
           }

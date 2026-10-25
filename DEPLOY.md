@@ -19,20 +19,34 @@ Rotate `WESOLVE_SESSION_SECRET` to sign every existing session out.
 
 `https://jaiek2k25.github.io/PASHco/`
 
-The workflow in `.github/workflows/deploy-pages.yml` builds the app and publishes `dist/`.
-It sets the base path to `/PASHco/` and copies `index.html` to `404.html` so deep links work.
+Pages can be configured two ways, and this repo works with both:
+
+| Pages source | How the site gets built |
+| --- | --- |
+| **GitHub Actions** (preferred) | `.github/workflows/deploy-pages.yml` builds `dist/` and publishes it |
+| **Deploy from a branch** | `npm run build:pages` writes a committed `site/` bundle; the root `index.html` loads it when its dev entry is missing |
+
+The branch mode exists because a plain Vite repo cannot be served from source: the checked-in
+`index.html` points at `/src/main.jsx`, which a browser cannot execute. That is why the URL used
+to render a blank page. The shell now detects the failed request and boots `site/app.js` instead,
+and `404.html` keeps deep links working without a server.
+
+After changing app code, refresh the committed bundle:
+
+```bash
+npm run build:pages     # rebuilds site/ and 404.html
+```
+
+For a custom domain, set `PAGES_CNAME=wesolve.ai` when building so a `CNAME` file is written, and
+point the domain's DNS at GitHub Pages. Use `VITE_BASE_PATH=/` for a domain that serves from the
+root.
 
 **What works there:** the landing page, pricing, and the whole app in guest mode — solver,
 whiteboard, flashcards, quizzes, study packs — using the local engine, with work saved in the
-browser. A notice in the app says so.
+browser.
 
 **What cannot work there:** accounts and live AI. Pages serves files only; there is no Node
-process for `/api/auth` or `/api/ai`. AI keys are therefore unusable on Pages, and signing in
-has nothing to talk to.
-
-If Pages still shows a blank page, the repo is set to publish the source branch instead of the
-build. Fix it once in **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-The workflow also tries to switch this automatically via `actions/configure-pages`.
+process for `/api/auth` or `/api/ai`. A notice in the app says so.
 
 ## Option 1 — Fly.io (recommended: persistent volume, cheap, always on)
 

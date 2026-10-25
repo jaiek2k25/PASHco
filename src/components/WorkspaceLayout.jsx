@@ -52,7 +52,7 @@ const TITLES = {
 export default function WorkspaceLayout() {
   const location = useLocation()
   const navigate = useNavigate()
-  const { state, auth, isAuthenticated, setUpgradeOpen, setAuthOpen, signOut, toast, mobileMenuOpen, setMobileMenuOpen, setServiceSettingsOpen, serviceSettingsVersion, syncNow } = useApp()
+  const { state, auth, isAuthenticated, setUpgradeOpen, setAuthOpen, signOut, toast, mobileMenuOpen, setMobileMenuOpen, setServiceSettingsOpen, serviceSettingsVersion, syncNow, backend } = useApp()
   const [profileOpen, setProfileOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [aiStatus, setAiStatus] = useState(null)
@@ -138,10 +138,16 @@ export default function WorkspaceLayout() {
             <button
               className={`sync-chip ${isAuthenticated ? auth.syncState : 'local'}`}
               onClick={() => isAuthenticated ? syncNow() : setAuthOpen(true)}
-              title={isAuthenticated ? 'Sync workspace to your account' : 'Sign in to sync across devices'}
+              title={isAuthenticated
+                ? (backend.available ? 'Sync workspace to your account' : 'Save your work on this device')
+                : (backend.available ? 'Sign in to sync across devices' : 'Create a profile stored in this browser')}
             >
               {auth.syncState === 'saving' ? <LoaderCircle size={15} className="spin" /> : isAuthenticated ? <Cloud size={15} /> : <CloudOff size={15} />}
-              <span>{auth.syncState === 'saving' ? 'Saving' : isAuthenticated ? 'Synced' : 'Sign in to sync'}</span>
+              <span>{auth.syncState === 'saving'
+                ? 'Saving'
+                : isAuthenticated
+                  ? backend.available ? 'Synced' : 'Saved here'
+                  : 'Sign in to sync'}</span>
             </button>
             <button className="icon-button" aria-label="Help" onClick={() => toast('Tip: try a sample question from the Solver home.')}><CircleHelp size={19} /></button>
             <button className="icon-button notification-button" aria-label="Notifications" onClick={() => toast('You are all caught up!')}><Bell size={19} /><span /></button>

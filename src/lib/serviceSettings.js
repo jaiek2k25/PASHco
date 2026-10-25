@@ -4,6 +4,9 @@ const DEFAULTS = {
   nvidiaApiKey: '',
   nvidiaModel: '',
   nvidiaVisionModel: '',
+  // Any OpenAI-compatible endpoint (NVIDIA, DeepSeek, Groq, OpenRouter…).
+  // Empty means the server default, https://integrate.api.nvidia.com/v1.
+  nvidiaBaseUrl: '',
 }
 
 export function getServiceSettings() {
@@ -18,6 +21,7 @@ export function getServiceSettings() {
       ...DEFAULTS,
       ...saved,
       nvidiaApiKey: typeof saved.nvidiaApiKey === 'string' ? saved.nvidiaApiKey : '',
+      nvidiaBaseUrl: typeof saved.nvidiaBaseUrl === 'string' ? saved.nvidiaBaseUrl : '',
     }
   } catch {
     return { ...DEFAULTS }
@@ -31,6 +35,11 @@ export function setServiceSettings(settings) {
     window.dispatchEvent(new CustomEvent('wesolve-service-settings-changed', { detail: next }))
   }
   return next
+}
+
+/** True when this browser holds its own key rather than relying on the server's. */
+export function hasPersonalKey() {
+  return Boolean(getServiceSettings().nvidiaApiKey)
 }
 
 export function clearServiceSettings() {

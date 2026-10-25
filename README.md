@@ -81,6 +81,33 @@ Ready-made configs are in the repo: **`Dockerfile`** + **`fly.toml`** (Fly.io, 1
 **`render.yaml`** (Render blueprint), and a generic container path for Railway or a VPS.
 Full instructions, including the post-deploy checklist, are in **[DEPLOY.md](DEPLOY.md)**.
 
+## AI keys and providers
+
+There are two ways AI gets paid for, and both are supported at once:
+
+| Mode | Who pays | How to enable |
+| --- | --- | --- |
+| **Shared site key** | The site owner | Set `NVIDIA_API_KEY` on the server. Every visitor uses it. |
+| **Personal key** | Each visitor | Settings → AI → paste a key. It is stored in that browser only, sent per request, and never saved on the server. |
+
+A visitor's own key always wins over the server key for that visitor, so nobody spends
+someone else's quota by accident. Because a shared key is one pool of credits, `/api/ai`
+rate-limits each caller — 4 requests per 30 s and 12 per 5 min anonymously, more for signed-in
+accounts (10 per 30 s, 60 per 5 min). Exceeding a limit returns `429` with `Retry-After`, and the
+client retries with backoff instead of silently falling back to the local engine.
+
+The **API base URL** field accepts any OpenAI-compatible endpoint, so DeepSeek, Groq, OpenRouter,
+Together, or a self-hosted gateway can be used with the matching model id:
+
+```text
+Base URL  https://integrate.api.nvidia.com/v1    Model  deepseek-ai/deepseek-r1
+Base URL  https://api.groq.com/openai/v1         Model  llama-3.3-70b-versatile
+Base URL  https://openrouter.ai/api/v1           Model  deepseek/deepseek-r1
+```
+
+URLs must use HTTPS. Loopback addresses are only accepted when the app itself runs on localhost,
+and private network ranges are rejected, so the proxy cannot be turned into an SSRF tool.
+
 ## NVIDIA AI setup
 
 The app now supports real NVIDIA Build inference through a **same-origin server proxy**. The browser never needs to call NVIDIA directly, which avoids CORS issues and keeps server keys out of the front-end bundle.

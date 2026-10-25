@@ -1,9 +1,104 @@
 import { Buffer } from 'node:buffer'
+import { readSession } from './authStore.js'
 
 const DEFAULT_NVIDIA_BASE_URL = 'https://integrate.api.nvidia.com/v1'
 const DEFAULT_TEXT_MODEL = 'meta/llama-3.3-70b-instruct'
 const DEFAULT_VISION_MODEL = 'meta/llama-3.2-11b-vision-instruct'
 const MAX_BODY_BYTES = 12 * 1024 * 1024
+
+// Quota guards. A shared server key is a single pool of NVIDIA credits, so every
+// caller gets a burst limit and a rolling window limit. Signed-in accounts get a
+// larger allowance than anonymous visitors.
+const LIMITS = {
+  anonymous: { burst: { max: 4, windowMs: 30 * 1000 }, window: { max: 12, windowMs: 5 * 60 * 1000 } },
+  account: { burst: { max: 10, windowMs: 30 * 1000 }, window: { max: 60, windowMs: 5 * 60 * 1000 } },
+}
+
+const buckets = new Map()
+
+function takeToken(key, max, windowMs) {
+  const now = Date.now()
+  const entry = buckets.get(key)
+  if (!entry || entry.reset <= now) {
+    buckets.set(key, { count: 1, reset: now + windowMs })
+    return { ok: true, reset: now + windowMs }
+  }
+  if (entry.count >= max) return { ok: false, reset: entry.reset }
+  entry.count += 1
+  return { ok: true, reset: entry.reset }
+}
+
+function pruneBuckets(now) {
+  if (buckets.size < 2000) return
+  for (const [key, entry] of buckets) if (entry.reset <= now) buckets.delete(key)
+}
+
+function checkRateLimit(identity, tier) {
+  const limits = LIMITS[tier]
+  pruneBuckets(Date.now())
+  const burst = takeToken(`${identity}:burst`, limits.burst.max, limits.burst.windowMs)
+  if (!burst.ok) return { ok: false, retryAfter: Math.max(1, Math.ceil((burst.reset - Date.now()) / 1000)), scope: 'burst' }
+  const window = takeToken(`${identity}:window`, limits.window.max, limits.window.windowMs)
+  if (!window.ok) return { ok: false, retryAfter: Math.max(1, Math.ceil((window.reset - Date.now()) / 1000)), scope: 'window' }
+  return { ok: true }
+}
+
+function parseCookies(header = '') {
+  const result = {}
+  for (const part of String(header).split(';')) {
+    const index = part.indexOf('=')
+    if (index === -1) continue
+    try {
+      result[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim())
+    } catch {
+      result[part.slice(0, index).trim()] = part.slice(index + 1).trim()
+    }
+  }
+  return result
+}
+
+function callerIdentity(req) {
+  const user = readSession(parseCookies(req.headers.cookie).wesolve_session)
+  if (user) return { id: `user:${user.id}`, tier: 'account' }
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+  return { id: `ip:${forwarded || req.socket?.remoteAddress || 'unknown'}`, tier: 'anonymous' }
+}
+
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
+const PRIVATE_HOST = /^(10\.|127\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/
+
+/**
+ * Resolve the OpenAI-compatible endpoint. A per-browser override lets someone use
+ * DeepSeek / Groq / OpenRouter while keeping the key in their own browser. The URL
+ * is validated so the proxy can never be pointed at internal infrastructure.
+ */
+function resolveBaseUrl(req, env) {
+  const headerValue = req.headers['x-ai-base-url']
+  const header = Array.isArray(headerValue) ? headerValue[0] : headerValue
+  const candidate = safeString(header || process.env.NVIDIA_BASE_URL || env.NVIDIA_BASE_URL || DEFAULT_NVIDIA_BASE_URL, 400).trim()
+  let url
+  try {
+    url = new URL(candidate)
+  } catch {
+    throw Object.assign(new Error('The API base URL is not a valid URL.'), { status: 400 })
+  }
+  const host = url.hostname.toLowerCase()
+  const requestHost = String(req.headers.host || '').split(':')[0].toLowerCase()
+  const requestIsLocal = LOCAL_HOSTS.has(requestHost)
+  const isLoopback = LOCAL_HOSTS.has(host)
+  // Loopback is fine for local development, never for a deployed site.
+  const allowLoopback = isLoopback && requestIsLocal
+  if (isLoopback && !allowLoopback) {
+    throw Object.assign(new Error('A localhost API base URL is only allowed when the app itself runs locally.'), { status: 400 })
+  }
+  if (!allowLoopback && PRIVATE_HOST.test(host)) {
+    throw Object.assign(new Error('A private-network API base URL is not allowed.'), { status: 400 })
+  }
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && allowLoopback)) {
+    throw Object.assign(new Error('The API base URL must use HTTPS.'), { status: 400 })
+  }
+  return `${url.origin}${url.pathname}`.replace(/\/+$/, '')
+}
 
 const TASK_CONFIG = {
   solve: {
@@ -231,6 +326,8 @@ export function createAiHandler(env = {}) {
         model: getSetting({}, env, 'NVIDIA_MODEL', DEFAULT_TEXT_MODEL),
         visionModel: getSetting({}, env, 'NVIDIA_VISION_MODEL', DEFAULT_VISION_MODEL),
         provider: 'NVIDIA build.nvidia.com',
+        shared: Boolean(process.env.NVIDIA_API_KEY || env.NVIDIA_API_KEY),
+        signedIn: callerIdentity(req).tier === 'account',
       })
       return
     }
@@ -258,9 +355,17 @@ export function createAiHandler(env = {}) {
     const key = getKey(req, env)
     if (!key) {
       sendJson(res, 503, {
-        error: 'No NVIDIA API key configured. Add one in AI Settings or set NVIDIA_API_KEY on the server.',
+        error: 'No AI key configured. Add one in AI Settings or set NVIDIA_API_KEY on the server.',
         code: 'NO_API_KEY',
       })
+      return
+    }
+
+    let baseUrl
+    try {
+      baseUrl = resolveBaseUrl(req, env)
+    } catch (error) {
+      sendJson(res, error.status || 400, { error: error.message, code: 'BAD_BASE_URL' })
       return
     }
 
@@ -276,7 +381,22 @@ export function createAiHandler(env = {}) {
       return
     }
 
-    const baseUrl = getSetting({}, env, 'NVIDIA_BASE_URL', DEFAULT_NVIDIA_BASE_URL).replace(/\/$/, '')
+    // Protect the configured key's quota: a shared server key would otherwise let
+    // one visitor drain it. Personal browser keys still share the per-IP limit.
+    const caller = callerIdentity(req)
+    const limit = checkRateLimit(caller.id, caller.tier)
+    if (!limit.ok) {
+      res.setHeader('Retry-After', String(limit.retryAfter))
+      sendJson(res, 429, {
+        error: limit.scope === 'burst'
+          ? 'You are sending requests too quickly. Give it a few seconds.'
+          : 'You have reached the AI usage limit for now. Try again shortly.',
+        code: 'RATE_LIMITED',
+        retryAfter: limit.retryAfter,
+        tier: caller.tier,
+      })
+      return
+    }
     const endpoint = /\/chat\/completions$/.test(baseUrl) ? baseUrl : `${baseUrl}/chat/completions`
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 90000)
@@ -310,16 +430,17 @@ export function createAiHandler(env = {}) {
       if (!upstream.ok) {
         const detail = upstreamData?.detail || upstreamData?.message || upstreamData?.error?.message || `NVIDIA returned HTTP ${upstream.status}.`
         sendJson(res, upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502, {
-          error: 'NVIDIA AI request failed.',
+          error: 'The AI provider rejected the request.',
           detail: safeString(detail, 500),
-          code: upstream.status === 401 ? 'INVALID_KEY' : upstream.status === 403 ? 'NO_INFERENCE_ACCESS' : 'UPSTREAM_ERROR',
+          code: upstream.status === 401 ? 'INVALID_KEY' : upstream.status === 403 ? 'NO_INFERENCE_ACCESS' : upstream.status === 429 ? 'UPSTREAM_RATE_LIMITED' : 'UPSTREAM_ERROR',
+          retryAfter: Number(upstream.headers.get('retry-after')) || undefined,
         })
         return
       }
 
       const content = upstreamData?.choices?.[0]?.message?.content || upstreamData?.choices?.[0]?.message?.reasoning_content || ''
       if (!content) {
-        sendJson(res, 502, { error: 'The NVIDIA model returned an empty response.', code: 'EMPTY_RESPONSE' })
+        sendJson(res, 502, { error: 'The AI model returned an empty response.', code: 'EMPTY_RESPONSE' })
         return
       }
 

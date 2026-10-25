@@ -36,6 +36,7 @@ async function parseResponse(response) {
     error.code = data.code
     error.status = response.status
     error.noKey = data.code === 'NO_API_KEY'
+    error.retryAfter = Number(data.retryAfter) || Number(response.headers?.get?.('retry-after')) || 0
     throw error
   }
   return data
@@ -62,7 +63,8 @@ async function directNvidiaRequest(task, payload, settings) {
         { type: 'image_url', image_url: { url: payload?.image } },
       ]
     : `${DIRECT_PROMPTS[task]}\n\nDATA:\n${JSON.stringify(payload || {}).slice(0, 30000)}`
-  const response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
+  const baseUrl = (settings.nvidiaBaseUrl || 'https://integrate.api.nvidia.com/v1').replace(/\/+$/, '')
+  const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${settings.nvidiaApiKey}`,
@@ -99,6 +101,7 @@ export async function getAiStatus() {
   const settings = getServiceSettings()
   const headers = {}
   if (settings.nvidiaApiKey) headers['x-nvidia-api-key'] = settings.nvidiaApiKey
+  if (settings.nvidiaBaseUrl) headers['x-ai-base-url'] = settings.nvidiaBaseUrl
   try {
     const response = await fetch('/api/ai/status', { headers, cache: 'no-store' })
     return await parseResponse(response).catch(() => ({ configured: false, keySource: 'none' }))
@@ -107,31 +110,49 @@ export async function getAiStatus() {
   }
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** Retry only failures that a retry can actually fix. Bad keys never retry. */
+function isRetryable(error) {
+  if (!error || error.noKey) return false
+  if (error.code === 'INVALID_KEY' || error.code === 'NO_INFERENCE_ACCESS' || error.code === 'BAD_BASE_URL') return false
+  if ([429, 502, 503, 504].includes(error.status)) return true
+  return !error.status
+}
+
 export async function requestAi(task, payload = {}, options = {}) {
   const settings = getServiceSettings()
   const headers = { 'Content-Type': 'application/json' }
   if (settings.nvidiaApiKey) headers['x-nvidia-api-key'] = settings.nvidiaApiKey
+  if (settings.nvidiaBaseUrl) headers['x-ai-base-url'] = settings.nvidiaBaseUrl
+  const attempts = Math.max(1, options.retries ?? 3)
 
   let proxyError = null
-  try {
-    const response = await fetch('/api/ai', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        task,
-        payload,
-        model: options.vision ? settings.nvidiaVisionModel : settings.nvidiaModel || undefined,
-        maxTokens: options.maxTokens,
-      }),
-    })
-    const result = await parseResponse(response)
-    lastAiError = null
-    return result.data
-  } catch (error) {
-    proxyError = error
-    if (error.noKey) {
-      lastAiError = error
-      throw error
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetch('/api/ai', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          task,
+          payload,
+          model: options.vision ? settings.nvidiaVisionModel : settings.nvidiaModel || undefined,
+          maxTokens: options.maxTokens,
+        }),
+      })
+      const result = await parseResponse(response)
+      lastAiError = null
+      return result.data
+    } catch (error) {
+      proxyError = error
+      if (error.noKey) {
+        lastAiError = error
+        throw error
+      }
+      if (!isRetryable(error) || attempt === attempts - 1) break
+      // Respect Retry-After, otherwise exponential backoff with jitter.
+      const wait = error.retryAfter ? Math.min(error.retryAfter, 20) * 1000 : Math.round(600 * 2 ** attempt + Math.random() * 400)
+      await sleep(wait)
     }
   }
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Eye, EyeOff, KeyRound, LoaderCircle, RefreshCw, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Eye, EyeOff, KeyRound, LoaderCircle, RefreshCw, ShieldCheck, Sparkles, Trash2 } from 'lucide-react'
 import { Badge, Button, Modal } from './Common'
 import { useApp } from '../context/AppContext'
 import { getAiStatus, requestAi } from '../lib/aiClient'
@@ -26,12 +26,11 @@ export default function ServiceSettingsModal() {
     setServiceSettings({
       ...settings,
       nvidiaApiKey: settings.nvidiaApiKey.trim(),
-      googleClientId: settings.googleClientId.trim(),
       nvidiaModel: settings.nvidiaModel.trim(),
       nvidiaVisionModel: settings.nvidiaVisionModel.trim(),
     })
     refreshServiceSettings()
-    toast('AI and sign-in settings saved in this browser.')
+    toast('AI settings saved in this browser.')
     setServiceSettingsOpen(false)
   }
 
@@ -60,8 +59,8 @@ export default function ServiceSettingsModal() {
     <Modal
       open={serviceSettingsOpen}
       onClose={() => setServiceSettingsOpen(false)}
-      title="Connect AI & Google"
-      subtitle="Add a build.nvidia.com key and optional Google OAuth client ID. Settings stay in this browser."
+      title="Connect NVIDIA AI"
+      subtitle="Add a build.nvidia.com key for live AI answers. Settings stay in this browser."
       width={620}
       footer={<><Button variant="ghost" icon={Trash2} onClick={clear}>Clear all</Button><Button variant="outline" onClick={() => setServiceSettingsOpen(false)}>Cancel</Button><Button icon={CheckCircle2} onClick={save}>Save settings</Button></>}
     >
@@ -81,11 +80,6 @@ export default function ServiceSettingsModal() {
             <label className="field-label"><span>Vision / OCR model <small>optional</small></span><input value={settings.nvidiaVisionModel} onChange={(event) => setSettings((item) => ({ ...item, nvidiaVisionModel: event.target.value }))} placeholder="meta/llama-3.2-11b-vision-instruct" /></label>
           </div>
           <Button variant="outline" size="sm" icon={testing ? LoaderCircle : RefreshCw} onClick={test} disabled={testing || !settings.nvidiaApiKey.trim()}>{testing ? 'Testing…' : 'Test connection'}</Button>
-        </div>
-
-        <div className="service-section">
-          <div className="service-section-head"><div><h3>Google OAuth client ID</h3><p>Enables a real Google sign-in button. Client IDs are public; no client secret is needed.</p></div></div>
-          <label className="field-label"><span>OAuth client ID <small>optional</small></span><input value={settings.googleClientId} onChange={(event) => setSettings((item) => ({ ...item, googleClientId: event.target.value }))} placeholder="1234567890-abcdef.apps.googleusercontent.com" /></label>
         </div>
 
         <div className="service-warning"><AlertTriangle size={18} /><p><strong>Security note:</strong> a browser-stored key is convenient for a personal local app, but anyone with access to this browser profile can read it. For a public deployment, use the server-side <code>NVIDIA_API_KEY</code> environment variable instead and leave this field empty. Never commit a key to GitHub.</p></div>

@@ -1,7 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { createId, generateStudyPack, sampleStudyMaterial } from '../lib/intelligence'
+import { authApi } from '../lib/authClient'
 
-const STORAGE_KEY = 'pashco-solvely-recreation-v1'
+const STORAGE_KEY = 'wesolve-v1'
+const LEGACY_KEYS = ['pashco-solvely-recreation-v1', 'pashco-wesolve-recreation-v1']
+const SYNC_KEYS = ['plan', 'solvesUsed', 'history', 'studySets', 'notes', 'research', 'exams', 'currentPackId', 'onboarding', 'settings']
 
 const defaultState = {
   user: null,
@@ -25,84 +28,239 @@ const defaultState = {
   },
 }
 
+function starterState() {
+  const starterPack = generateStudyPack(sampleStudyMaterial, 'Biology foundations')
+  return { ...defaultState, studySets: [{ ...starterPack, id: 'starter-pack' }] }
+}
+
+function normalizeState(saved) {
+  return {
+    ...defaultState,
+    ...saved,
+    user: null,
+    settings: { ...defaultState.settings, ...(saved?.settings || {}) },
+    onboarding: { ...defaultState.onboarding, ...(saved?.onboarding || {}) },
+    history: Array.isArray(saved?.history) ? saved.history : [],
+    studySets: Array.isArray(saved?.studySets) && saved.studySets.length ? saved.studySets : starterState().studySets,
+    notes: Array.isArray(saved?.notes) ? saved.notes : [],
+    research: Array.isArray(saved?.research) ? saved.research : [],
+    exams: Array.isArray(saved?.exams) ? saved.exams : [],
+  }
+}
+
 function loadState() {
   if (typeof window === 'undefined') return defaultState
   try {
-    const saved = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || 'null')
-    if (!saved) {
-      const starterPack = generateStudyPack(sampleStudyMaterial, 'Biology foundations')
-      return { ...defaultState, studySets: [{ ...starterPack, id: 'starter-pack' }] }
+    let raw = window.localStorage.getItem(STORAGE_KEY)
+    if (!raw) {
+      for (const legacyKey of LEGACY_KEYS) {
+        const legacy = window.localStorage.getItem(legacyKey)
+        if (legacy) {
+          raw = legacy
+          window.localStorage.setItem(STORAGE_KEY, legacy)
+          break
+        }
+      }
     }
-    return {
-      ...defaultState,
-      ...saved,
-      settings: { ...defaultState.settings, ...(saved.settings || {}) },
-      onboarding: { ...defaultState.onboarding, ...(saved.onboarding || {}) },
-    }
+    if (!raw) return starterState()
+    return normalizeState(JSON.parse(raw))
   } catch {
-    return defaultState
+    return starterState()
   }
+}
+
+export function workspacePayload(state) {
+  return SYNC_KEYS.reduce((payload, key) => {
+    if (key in state) payload[key] = state[key]
+    return payload
+  }, {})
 }
 
 export const AppContext = createContext(null)
 
 export function AppProvider({ children }) {
   const [state, setState] = useState(loadState)
+  const [auth, setAuth] = useState({ status: 'loading', syncedAt: null, syncState: 'idle', error: '' })
   const [toasts, setToasts] = useState([])
   const [authOpen, setAuthOpen] = useState(false)
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [serviceSettingsOpen, setServiceSettingsOpen] = useState(false)
   const [serviceSettingsVersion, setServiceSettingsVersion] = useState(0)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const lastSyncedRef = useRef('')
+  const hydratedRef = useRef(false)
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, user: null }))
     } catch {
       // Storage may be unavailable in private browsing; the app still works in memory.
     }
   }, [state])
 
+  useEffect(() => {
+    let cancelled = false
+    let timer = null
+
+    async function restore() {
+      try {
+        const data = await authApi.me()
+        if (cancelled) return
+        if (!data.user) {
+          setAuth({ status: 'anonymous', syncedAt: null, syncState: 'local', error: '' })
+          hydratedRef.current = true
+          return
+        }
+
+        if (data.hasWorkspace) {
+          const saved = await authApi.getWorkspace()
+          if (cancelled) return
+          if (saved.workspace) {
+            const next = { ...normalizeState(saved.workspace), user: data.user }
+            lastSyncedRef.current = JSON.stringify(workspacePayload(next))
+            setState(next)
+          }
+        } else {
+          setState((current) => ({ ...current, user: data.user }))
+        }
+
+        setAuth({ status: 'authenticated', syncedAt: data.syncedAt, syncState: 'synced', error: '' })
+        hydratedRef.current = true
+      } catch {
+        if (cancelled) return
+        setAuth({ status: 'anonymous', syncedAt: null, syncState: 'offline', error: '' })
+        hydratedRef.current = true
+      }
+    }
+
+    restore()
+    return () => {
+      cancelled = true
+      if (timer) window.clearTimeout(timer)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!hydratedRef.current || auth.status !== 'authenticated') return undefined
+    const payload = workspacePayload(state)
+    const serialized = JSON.stringify(payload)
+    if (serialized === lastSyncedRef.current) return undefined
+
+    setAuth((current) => (current.syncState === 'saving' ? current : { ...current, syncState: 'pending' }))
+    const timer = window.setTimeout(async () => {
+      setAuth((current) => ({ ...current, syncState: 'saving' }))
+      try {
+        const result = await authApi.saveWorkspace(payload)
+        lastSyncedRef.current = serialized
+        setAuth((current) => ({ ...current, syncState: 'synced', syncedAt: result.syncedAt, error: '' }))
+      } catch (error) {
+        setAuth((current) => ({ ...current, syncState: 'error', error: error.message || 'Sync failed.' }))
+      }
+    }, 900)
+
+    return () => window.clearTimeout(timer)
+  }, [state, auth.status])
+
   const removeToast = useCallback((id) => {
-    setToasts((items) => items.filter((toast) => toast.id !== id))
+    setToasts((items) => items.filter((toastItem) => toastItem.id !== id))
   }, [])
 
   const toast = useCallback((message, type = 'success') => {
     const id = createId('toast')
     setToasts((items) => [...items, { id, message, type }])
-    window.setTimeout(() => removeToast(id), 3600)
+    window.setTimeout(() => removeToast(id), 3800)
   }, [removeToast])
 
   const patch = useCallback((updater) => {
     setState((current) => (typeof updater === 'function' ? updater(current) : { ...current, ...updater }))
   }, [])
 
-  const signIn = useCallback(({ name, email, provider = 'demo', picture = '' }) => {
-    const displayName = name?.trim() || email?.split('@')[0] || 'Student'
-    patch((current) => ({
-      ...current,
-      user: {
-        name: displayName,
-        email: email || `${displayName.toLowerCase().replace(/\s+/g, '.')}@demo.local`,
-        provider,
-        picture,
-        joinedAt: current.user?.joinedAt || new Date().toISOString(),
-      },
-    }))
+  const adoptAccount = useCallback((user, workspace) => {
+    setState((current) => {
+      const base = workspace ? normalizeState(workspace) : current
+      return { ...base, user }
+    })
+    lastSyncedRef.current = workspace ? JSON.stringify(workspacePayload(normalizeState(workspace))) : ''
+    setAuth({ status: 'authenticated', syncedAt: null, syncState: workspace ? 'synced' : 'pending', error: '' })
+    hydratedRef.current = true
     setAuthOpen(false)
-    toast(`Welcome, ${displayName}!`)
+  }, [])
+
+  const signUp = useCallback(async ({ name, email, password }) => {
+    const result = await authApi.register({ name, email, password })
+    adoptAccount(result.user, null)
+    toast(`Welcome to WeSolve, ${result.user.name.split(' ')[0]}! Your workspace is now syncing.`)
+    return result.user
+  }, [adoptAccount, toast])
+
+  const signIn = useCallback(async ({ email, password }) => {
+    const result = await authApi.login({ email, password })
+    adoptAccount(result.user, result.workspace)
+    toast(`Welcome back, ${result.user.name.split(' ')[0]}. Your workspace is synced.`)
+    return result.user
+  }, [adoptAccount, toast])
+
+  const signOut = useCallback(async () => {
+    try {
+      await authApi.logout()
+    } catch {
+      // Signing out locally is still safe if the network is unavailable.
+    }
+    lastSyncedRef.current = ''
+    setState(starterState())
+    setAuth({ status: 'anonymous', syncedAt: null, syncState: 'local', error: '' })
+    toast('Signed out. This device now shows a fresh guest workspace.')
   }, [patch, toast])
 
-  const signOut = useCallback(() => {
-    patch({ user: null })
-    toast('Signed out of your demo workspace.')
+  const syncNow = useCallback(async () => {
+    if (auth.status !== 'authenticated') {
+      setAuthOpen(true)
+      return false
+    }
+    try {
+      setAuth((current) => ({ ...current, syncState: 'saving' }))
+      const payload = workspacePayload(state)
+      const result = await authApi.saveWorkspace(payload)
+      lastSyncedRef.current = JSON.stringify(payload)
+      setAuth((current) => ({ ...current, syncState: 'synced', syncedAt: result.syncedAt, error: '' }))
+      toast('Workspace synced to your account.')
+      return true
+    } catch (error) {
+      setAuth((current) => ({ ...current, syncState: 'error', error: error.message }))
+      toast(error.message || 'Could not sync right now.', 'error')
+      return false
+    }
+  }, [auth.status, state, toast])
+
+  const updateProfile = useCallback(async ({ name }) => {
+    if (auth.status !== 'authenticated') return null
+    const result = await authApi.updateProfile({ name })
+    patch((current) => ({ ...current, user: { ...current.user, ...result.user } }))
+    toast('Profile updated.')
+    return result.user
+  }, [auth.status, patch, toast])
+
+  const changePassword = useCallback(async ({ currentPassword, nextPassword }) => {
+    await authApi.changePassword({ currentPassword, nextPassword })
+    toast('Password changed. Other sessions were signed out.')
+  }, [toast])
+
+  const deleteAccount = useCallback(async (password) => {
+    await authApi.deleteAccount(password)
+    lastSyncedRef.current = ''
+    setState(starterState())
+    setAuth({ status: 'anonymous', syncedAt: null, syncState: 'local', error: '' })
+    toast('Your account and synced data were deleted.')
   }, [patch, toast])
 
   const setPlan = useCallback((plan) => {
     patch({ plan })
     setUpgradeOpen(false)
-    toast(plan === 'pro' ? 'Pro is active in this demo workspace.' : 'Switched to the free plan.')
-  }, [patch, toast])
+    toast(plan === 'pro' ? 'Pro is active for your account.' : 'Switched to the free plan.')
+    if (auth.status === 'authenticated') {
+      authApi.updateProfile({ plan }).catch(() => {})
+    }
+  }, [auth.status, patch, toast])
 
   const canSolve = useCallback(() => {
     if (state.plan === 'pro') return true
@@ -170,10 +328,10 @@ export function AppProvider({ children }) {
   }, [patch])
 
   const resetWorkspace = useCallback(() => {
-    const starterPack = generateStudyPack(sampleStudyMaterial, 'Biology foundations')
-    setState({ ...defaultState, studySets: [{ ...starterPack, id: 'starter-pack' }] })
-    toast('Workspace reset to the demo defaults.')
-  }, [toast])
+    const starter = starterState()
+    setState({ ...starter, user: state.user })
+    toast('Workspace reset to the starter study set.')
+  }, [state.user, toast])
 
   const refreshServiceSettings = useCallback(() => {
     setServiceSettingsVersion((value) => value + 1)
@@ -187,6 +345,8 @@ export function AppProvider({ children }) {
   const value = useMemo(() => ({
     state,
     currentPack,
+    auth,
+    isAuthenticated: auth.status === 'authenticated',
     toasts,
     removeToast,
     toast,
@@ -201,7 +361,12 @@ export function AppProvider({ children }) {
     mobileMenuOpen,
     setMobileMenuOpen,
     signIn,
+    signUp,
     signOut,
+    syncNow,
+    updateProfile,
+    changePassword,
+    deleteAccount,
     setPlan,
     canSolve,
     consumeSolve,
@@ -217,7 +382,7 @@ export function AppProvider({ children }) {
     updateOnboarding,
     updateSettings,
     resetWorkspace,
-  }), [state, currentPack, toasts, removeToast, toast, authOpen, upgradeOpen, serviceSettingsOpen, serviceSettingsVersion, refreshServiceSettings, mobileMenuOpen, signIn, signOut, setPlan, canSolve, consumeSolve, addHistory, deleteHistory, clearHistory, saveStudySet, deleteStudySet, setCurrentPack, saveNote, saveResearch, saveExam, updateOnboarding, updateSettings, resetWorkspace])
+  }), [state, currentPack, auth, toasts, removeToast, toast, authOpen, upgradeOpen, serviceSettingsOpen, serviceSettingsVersion, refreshServiceSettings, mobileMenuOpen, signIn, signUp, signOut, syncNow, updateProfile, changePassword, deleteAccount, setPlan, canSolve, consumeSolve, addHistory, deleteHistory, clearHistory, saveStudySet, deleteStudySet, setCurrentPack, saveNote, saveResearch, saveExam, updateOnboarding, updateSettings, resetWorkspace])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

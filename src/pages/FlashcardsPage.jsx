@@ -85,7 +85,7 @@ export default function FlashcardsPage() {
   if (!cards.length) {
     return (
       <div className="app-page flashcards-page"><ToolTabs /><PageHeader eyebrow="FLASHCARDS" title="Memorize faster" description="Create a deck from your notes, files, or links." />
-        <EmptyState icon={Layers3} title="No flashcards yet" description="Add study material and Solvely will extract definitions, key concepts, and review questions." action={<Button icon={Plus} onClick={() => setSourceOpen(true)}>Create flashcards</Button>} />
+        <EmptyState icon={Layers3} title="No flashcards yet" description="Add study material and WeSolve will extract definitions, key concepts, and review questions." action={<Button icon={Plus} onClick={() => setSourceOpen(true)}>Create flashcards</Button>} />
         <SourceModal open={sourceOpen} onClose={() => setSourceOpen(false)} onGenerate={generate} title="Create AI flashcards" cta="Generate flashcards" generatedTitle="My flashcard deck" />
       </div>
     )

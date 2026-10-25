@@ -41,8 +41,8 @@ const REVIEWS = [
 ]
 
 const FAQS = [
-  ['How does Solvely Unlimited Subscription work?', 'From the date of subscription, you get unlimited scans for solving questions, unlimited step explanations, and unlimited AI tutor usage. In this local demo, activating Pro instantly unlocks every feature without payment.'],
-  ['How does Solvely work?', 'Scan — fit your problem in the box and take a snap, or upload a photo. Solve — the app recognizes characters through OCR and computes the process. Explain — ask a follow-up when a step is unclear.'],
+  ['How does WeSolve Unlimited Subscription work?', 'From the date of subscription, you get unlimited scans for solving questions, unlimited step explanations, and unlimited AI tutor usage. In this local demo, activating Pro instantly unlocks every feature without payment.'],
+  ['How does WeSolve work?', 'Scan — fit your problem in the box and take a snap, or upload a photo. Solve — the app recognizes characters through OCR and computes the process. Explain — ask a follow-up when a step is unclear.'],
   ['How to cancel subscription?', 'A real subscription can be cancelled at any time from the account page. This prototype has no billing connection, so you can switch back to Free at any time in Account settings.'],
   ['How to pause subscription?', 'Stripe subscriptions can be paused from the account page. App Store pausing is not currently supported. This demo does not create recurring charges.'],
   ['I already subscribed. Why isn’t my subscription showing?', 'Check that you are logged into the correct account, verify that payment succeeded, and use the “Sync mobile account to web” option in a production account.'],
@@ -95,7 +95,7 @@ export default function Pricing() {
 
             <article className="price-card pro-card">
               <div className="popular-ribbon"><Crown size={14} /> {plan.badge}</div>
-              <div className="price-card-top"><span className="price-icon"><Crown size={20} /></span><div><small>Unlimited</small><h2>Solvely Pro</h2></div><Badge tone="purple">PRO</Badge></div>
+              <div className="price-card-top"><span className="price-icon"><Crown size={20} /></span><div><small>Unlimited</small><h2>WeSolve Pro</h2></div><Badge tone="purple">PRO</Badge></div>
               <div className="price-value"><strong>{plan.price}</strong><span>{plan.unit}</span></div>
               <p className="price-detail">{plan.detail}</p>
               <Button size="lg" className="full-width" iconRight={ArrowRight} onClick={activate}>Unlock Pro</Button>
@@ -131,7 +131,7 @@ export default function Pricing() {
           </div>
         </section>
       </main>
-      <footer className="simple-footer"><div className="container"><span>© 2026 Solvely demo · PASHco edition</span><div><button onClick={() => navigate('/')}>Home</button><button onClick={() => navigate('/home')}>Workspace</button><button onClick={() => toast('This is a local demo; no payment is processed.')}>Terms</button></div></div></footer>
+      <footer className="simple-footer"><div className="container"><span>© 2026 WeSolve · All rights reserved</span><div><button onClick={() => navigate('/')}>Home</button><button onClick={() => navigate('/home')}>Workspace</button><button onClick={() => toast('This is a local demo; no payment is processed.')}>Terms</button></div></div></footer>
     </div>
   )
 }

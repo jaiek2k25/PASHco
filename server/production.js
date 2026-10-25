@@ -2,6 +2,7 @@ import http from 'node:http'
 import { createReadStream, existsSync, statSync } from 'node:fs'
 import { extname, join, resolve, sep } from 'node:path'
 import { createAiHandler } from './nvidiaAiPlugin.js'
+import { createAccountHandler } from './accountPlugin.js'
 
 const DIST = resolve(process.env.DIST_DIR || 'dist')
 const PORT = Number(process.env.PORT) || 3000
@@ -28,6 +29,7 @@ const MIME_TYPES = {
 }
 
 const aiHandler = createAiHandler(process.env)
+const accountHandler = createAccountHandler()
 
 function sendText(res, status, text) {
   res.statusCode = status
@@ -47,6 +49,11 @@ const server = http.createServer((req, res) => {
 
   if (url.pathname === '/api/ai' || url.pathname.startsWith('/api/ai/')) {
     aiHandler(req, res)
+    return
+  }
+
+  if (url.pathname === '/api/auth' || url.pathname.startsWith('/api/auth/')) {
+    accountHandler(req, res)
     return
   }
 

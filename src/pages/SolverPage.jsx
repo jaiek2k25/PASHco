@@ -17,7 +17,7 @@ const MODEL_LABELS = [
   { short: 'GPT', className: 'model-gpt' },
   { short: 'G', className: 'model-google' },
   { short: 'AI', className: 'model-claude' },
-  { short: 'S', className: 'model-solvely' },
+  { short: 'S', className: 'model-wesolve' },
 ]
 
 function formatSize(bytes) {
@@ -110,7 +110,7 @@ function CropModal({ open, file, onClose, onDone }) {
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Crop image" subtitle="Frame the problem you want Solvely to solve." width={720} footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button onClick={done}>Done</Button></>}>
+    <Modal open={open} onClose={onClose} title="Crop image" subtitle="Frame the problem you want WeSolve to solve." width={720} footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button onClick={done}>Done</Button></>}>
       <div className="crop-workspace">
         <div className="crop-preview">
           {preview && <img ref={imageRef} src={preview} alt="Crop preview" style={{ transform: `scale(${zoom})`, objectPosition: `${offsetX}% ${offsetY}%` }} />}
@@ -364,7 +364,7 @@ export default function SolverPage() {
         <div className="solver-home">
           <div className="solver-hero">
             <div className="solver-avatar"><Sparkles size={20} /></div>
-            <div className="solver-title-pill"><Sparkles size={14} /> Solvely AI</div>
+            <div className="solver-title-pill"><Sparkles size={14} /> WeSolve AI</div>
             <h1>What can I help you solve today?</h1>
             <p>Ask any question, upload a photo, paste a link, or explore what your study workspace can do.</p>
           </div>
@@ -423,7 +423,7 @@ export default function SolverPage() {
           </div>
 
           <section className="examples-section">
-            <div className="section-heading inline"><div><div className="section-kicker">EXPLORE</div><h2>Solver examples</h2><p>See how Solvely handles different subjects and answer formats.</p></div><Link to="/history">View history <ArrowRight size={15} /></Link></div>
+            <div className="section-heading inline"><div><div className="section-kicker">EXPLORE</div><h2>Solver examples</h2><p>See how WeSolve handles different subjects and answer formats.</p></div><Link to="/history">View history <ArrowRight size={15} /></Link></div>
             <div className="examples-grid">
               {sampleProblems.map((problem) => {
                 const Icon = EXAMPLE_ICONS[problem.category] || Sparkles
@@ -451,7 +451,7 @@ export default function SolverPage() {
       )}
 
       {loading && (
-        <div className="solver-loading"><div className="loading-header"><LoaderCircle className="spin" size={18} /><span>Solvely is reading your question…</span></div><AnswerSkeleton /></div>
+        <div className="solver-loading"><div className="loading-header"><LoaderCircle className="spin" size={18} /><span>WeSolve is reading your question…</span></div><AnswerSkeleton /></div>
       )}
 
       {result && !loading && (
@@ -515,7 +515,7 @@ export default function SolverPage() {
             <div className="followups">
               <div className="section-label"><span><Sparkles size={15} /> Recommended follow-ups</span></div>
               <div className="followup-suggestions">{result.followups.map((followup) => <button key={followup} onClick={() => askFollowup(followup)}>{followup}<ChevronRight size={15} /></button>)}</div>
-              {chat.map((message) => <div className="chat-thread" key={message.id}><div className="chat-user"><span>You</span><p>{message.question}</p></div><div className={`chat-ai ${message.pending ? 'pending-answer' : ''}`}><span><Sparkles size={13} /> Solvely</span><p>{message.answer}</p><button onClick={() => { if (window.speechSynthesis) { const utterance = new SpeechSynthesisUtterance(message.answer); window.speechSynthesis.speak(utterance) } }}><Volume2 size={14} /> Read aloud</button></div></div>)}
+              {chat.map((message) => <div className="chat-thread" key={message.id}><div className="chat-user"><span>You</span><p>{message.question}</p></div><div className={`chat-ai ${message.pending ? 'pending-answer' : ''}`}><span><Sparkles size={13} /> WeSolve</span><p>{message.answer}</p><button onClick={() => { if (window.speechSynthesis) { const utterance = new SpeechSynthesisUtterance(message.answer); window.speechSynthesis.speak(utterance) } }}><Volume2 size={14} /> Read aloud</button></div></div>)}
               <form className="followup-input" onSubmit={(event) => { event.preventDefault(); askFollowup() }}><button type="button" onClick={() => toast('Attachments are available on the new question screen.')}><Plus size={18} /></button><input value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="Ask follow-up…" /><button type="submit" aria-label="Send follow-up"><Send size={17} /></button></form>
             </div>
           </div>

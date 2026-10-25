@@ -980,6 +980,105 @@ export const tutorLessons = [
   },
 ]
 
+
+// Handwritten board content used by the Whiteboard Tutor studio. Each entry
+// maps to a lesson step and describes the ink lines plus a small sketch.
+export const tutorWhiteboards = {
+  quadratic: [
+    {
+      lines: ['Quadratic equations', 'ax² + bx + c = 0', 'where a ≠ 0'],
+      sketch: 'parabola',
+      highlight: 0,
+    },
+    {
+      lines: ['3x² − 5x − 2 = 0', 'a = 3', 'b = −5', 'c = −2'],
+      sketch: 'parabola',
+      highlight: 0,
+    },
+    {
+      lines: ['x = (−b ± √(b² − 4ac)) / 2a', 'Plug in: a = 3, b = −5, c = −2'],
+      sketch: null,
+      highlight: 0,
+    },
+    {
+      lines: ['Δ = b² − 4ac', 'Δ = (−5)² − 4(3)(−2)', 'Δ = 25 + 24 = 49', 'Δ > 0 → two real roots'],
+      sketch: 'parabola',
+      highlight: 2,
+    },
+    {
+      lines: ['x = (5 ± √49) / 6 = (5 ± 7) / 6', 'x = 2   or   x = −1/3', 'Both check out in the original equation ✓'],
+      sketch: 'parabolaRoots',
+      highlight: 1,
+    },
+  ],
+  photosynthesis: [
+    {
+      lines: ['Photosynthesis', 'light energy → chemical energy', 'chloroplast = the factory'],
+      sketch: 'leaf',
+      highlight: 0,
+    },
+    {
+      lines: ['6CO₂ + 6H₂O + light', '    → C₆H₁₂O₆ + 6O₂', 'reactants → products'],
+      sketch: 'leaf',
+      highlight: 0,
+    },
+    {
+      lines: ['Light reactions', 'happen in the thylakoid membrane', 'output: ATP + NADPH'],
+      sketch: 'chloroplast',
+      highlight: 0,
+    },
+    {
+      lines: ['Calvin cycle', 'happens in the stroma', 'CO₂ gets fixed into sugar'],
+      sketch: 'cycle',
+      highlight: 0,
+    },
+  ],
+  derivatives: [
+    {
+      lines: ['The power rule', 'works for any term xⁿ', 'slope = instantaneous rate of change'],
+      sketch: 'tangent',
+      highlight: 0,
+    },
+    {
+      lines: ['d/dx [xⁿ] = n · xⁿ⁻¹', 'bring the power down', 'then subtract 1 from it'],
+      sketch: 'tangent',
+      highlight: 0,
+    },
+    {
+      lines: ['d/dx [4x³]', '= 4 · 3 · x³⁻¹', '= 12x²'],
+      sketch: 'tangent',
+      highlight: 2,
+    },
+    {
+      lines: ['d/dx [3x² − 5x + 2]', '= 6x − 5 + 0', '= 6x − 5'],
+      sketch: null,
+      highlight: 2,
+    },
+  ],
+  'cell-cycle': [
+    {
+      lines: ['The cell cycle', 'one cell → two daughter cells', 'growth · copy · divide'],
+      sketch: 'cycle',
+      highlight: 0,
+    },
+    {
+      lines: ['Interphase', 'G₁ → S → G₂', 'DNA is copied during S'],
+      sketch: 'cycle',
+      highlight: 0,
+    },
+    {
+      lines: ['Mitosis — PMAT', 'Prophase · Metaphase', 'Anaphase · Telophase'],
+      sketch: 'chromosomes',
+      highlight: 0,
+    },
+    {
+      lines: ['Cytokinesis', 'the cytoplasm splits', '→ 2 identical cells'],
+      sketch: 'cells',
+      highlight: 0,
+    },
+  ],
+}
+
 export function getDemoExamQuestions(pack) {
   const generated = pack?.quiz?.length ? pack.quiz : generateStudyPack(sampleStudyMaterial, 'Biology final').quiz
   return generated.slice(0, 10).map((question, index) => ({

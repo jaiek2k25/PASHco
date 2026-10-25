@@ -195,7 +195,7 @@ export default function ExamPage() {
         </>
       )}
 
-      <SourceModal open={sourceOpen} onClose={() => setSourceOpen(false)} onGenerate={generateMaterials} title="Upload exam materials" description="Add notes, past exams, and slides. Solvely will use them to build predicted topics and mock questions." cta="Analyze materials" generatedTitle={`${details.exam} materials`} />
+      <SourceModal open={sourceOpen} onClose={() => setSourceOpen(false)} onGenerate={generateMaterials} title="Upload exam materials" description="Add notes, past exams, and slides. WeSolve will use them to build predicted topics and mock questions." cta="Analyze materials" generatedTitle={`${details.exam} materials`} />
       <Modal open={retakeOpen} onClose={() => setRetakeOpen(false)} title="Retake this diagnostic test?" subtitle="Retaking will replace your current result, answers, and score analysis." footer={<><Button variant="ghost" onClick={() => setRetakeOpen(false)}>Keep result</Button><Button onClick={() => { setRetakeOpen(false); startExam('diagnostic') }}>Retake diagnostic</Button></>}><p className="modal-hint">This action only affects the local demo workspace.</p></Modal>
     </div>
   )

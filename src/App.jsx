@@ -17,28 +17,28 @@ import NotesPage from './pages/NotesPage'
 import { AccountPage, DownloadPage, HistoryPage, LibraryPage, NotFoundPage } from './pages/UtilityPages'
 
 const PAGE_TITLES = {
-  '/': 'Solvely — AI Study Tools built for students',
-  '/pricing': 'Pricing — Solvely',
-  '/home': 'AI Solver — Solvely',
-  '/tutor': 'Whiteboard Tutor — Solvely',
-  '/flashcards': 'Flashcards — Solvely',
-  '/quiz': 'Quiz — Solvely',
-  '/study-guide': 'Study Guide — Solvely',
-  '/research': 'AI Research — Solvely',
-  '/exam': 'Exam Predictor — Solvely',
-  '/notes': 'AI Live Notes — Solvely',
-  '/history': 'History — Solvely',
-  '/library': 'Library — Solvely',
-  '/account': 'Account — Solvely',
-  '/mobile': 'Get the app — Solvely',
-  '/extension': 'Chrome Extension — Solvely',
+  '/': 'WeSolve — AI Study Tools built for students',
+  '/pricing': 'Pricing — WeSolve',
+  '/home': 'AI Solver — WeSolve',
+  '/tutor': 'Whiteboard Tutor — WeSolve',
+  '/flashcards': 'Flashcards — WeSolve',
+  '/quiz': 'Quiz — WeSolve',
+  '/study-guide': 'Study Guide — WeSolve',
+  '/research': 'AI Research — WeSolve',
+  '/exam': 'Exam Predictor — WeSolve',
+  '/notes': 'AI Live Notes — WeSolve',
+  '/history': 'History — WeSolve',
+  '/library': 'Library — WeSolve',
+  '/account': 'Account — WeSolve',
+  '/mobile': 'Get the app — WeSolve',
+  '/extension': 'Chrome Extension — WeSolve',
 }
 
 function ScrollToTop() {
   const { pathname } = useLocation()
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' })
-    document.title = PAGE_TITLES[pathname] || 'Page not found — Solvely'
+    document.title = PAGE_TITLES[pathname] || 'Page not found — WeSolve'
   }, [pathname])
   return null
 }

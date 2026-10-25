@@ -9,6 +9,9 @@ build/
 .vite/
 coverage/
 
+# Account database and session secret (server-side only)
+server/data/
+
 # Local environment
 .env
 .env.*

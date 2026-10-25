@@ -84,6 +84,30 @@ Generate 6-10 key points, 6-10 keywords, and 3 action items.`,
     system: 'You are an expert OCR and homework-question reader. Read all visible mathematical notation and text carefully. Return ONLY a single valid JSON object. Do not use markdown code fences.',
     schema: 'Return {"text":"exact transcription","subject":"best guess","notes":"brief description of diagrams or ambiguity"}. Preserve equations using plain text with ^ for powers and * for multiplication.',
   },
+  lesson: {
+    maxTokens: 4000,
+    temperature: 0.5,
+    system: 'You are an expert whiteboard tutor. Turn a topic, question, or source material into a short spoken-and-written lesson. Return ONLY a single valid JSON object. Do not use markdown code fences.',
+    schema: `Return this exact JSON shape:
+{
+  "title": "string",
+  "subject": "string",
+  "steps": [
+    {
+      "lines": ["short handwritten line", "another line"],
+      "note": "one-sentence description of this step",
+      "speech": "what the tutor says out loud (1-2 sentences)",
+      "sketch": "parabola | leaf | chloroplast | cycle | chromosomes | cells | tangent | null"
+    }
+  ],
+  "checkpoint": {
+    "prompt": "string",
+    "options": ["string", "string", "string"],
+    "correctIndex": 0
+  }
+}
+Rules: 4-6 steps. Every step needs 2-4 lines, each under 58 characters. Use plain text maths with ^ for powers and Unicode symbols where helpful. Choose a sketch only when it genuinely helps. Make the checkpoint test the core idea.`,
+  },
   exam: {
     maxTokens: 4000,
     temperature: 0.35,
@@ -206,7 +230,6 @@ export function createAiHandler(env = {}) {
         keySource: req.headers['x-nvidia-api-key'] ? 'browser' : key ? 'server' : 'none',
         model: getSetting({}, env, 'NVIDIA_MODEL', DEFAULT_TEXT_MODEL),
         visionModel: getSetting({}, env, 'NVIDIA_VISION_MODEL', DEFAULT_VISION_MODEL),
-        googleOAuthConfigured: Boolean(process.env.VITE_GOOGLE_CLIENT_ID || env.VITE_GOOGLE_CLIENT_ID),
         provider: 'NVIDIA build.nvidia.com',
       })
       return

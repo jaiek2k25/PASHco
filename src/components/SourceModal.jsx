@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext'
 import { createId, extractTextFromFile, sampleStudyMaterial, wordCount } from '../lib/intelligence'
 import { aiStudyPack } from '../lib/aiClient'
 
-export default function SourceModal({ open, onClose, title = 'Create a new study set', description = 'Add notes, paste text, or attach a supported file. Solvely turns it into a connected study pack.', cta = 'Generate study set', onGenerate, generatedTitle = 'New study set' }) {
+export default function SourceModal({ open, onClose, title = 'Create a new study set', description = 'Add notes, paste text, or attach a supported file. WeSolve turns it into a connected study pack.', cta = 'Generate study set', onGenerate, generatedTitle = 'New study set' }) {
   const { toast } = useApp()
   const [name, setName] = useState('')
   const [text, setText] = useState('')

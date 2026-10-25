@@ -72,7 +72,7 @@ async function directNvidiaRequest(task, payload, settings) {
     body: JSON.stringify({
       model,
       messages: [
-        { role: 'system', content: 'You are Solvely, an accurate study assistant. Return only valid JSON.' },
+        { role: 'system', content: 'You are WeSolve, an accurate study assistant. Return only valid JSON.' },
         { role: 'user', content },
       ],
       temperature: 0.3,
@@ -405,5 +405,102 @@ export async function aiExamPrediction(material, details = {}) {
     }
   } catch {
     return null
+  }
+}
+
+function buildLocalLesson(topic, material = '') {
+  const solution = solveProblem(topic, [])
+  const clean = String(topic).trim()
+  const title = clean.length > 48 ? `${clean.slice(0, 45)}…` : clean || 'Your lesson'
+  const steps = [
+    {
+      lines: [title, 'let’s break this down'],
+      note: 'Set up the lesson',
+      speech: `Let's work through ${title} together. I'll write each idea on the board as we go.`,
+      sketch: null,
+    },
+    ...solution.steps.slice(0, 4).map((step) => ({
+      lines: [step.title, ...String(step.body).replace(/\s+/g, ' ').split(/(?<=\.)\s/).slice(0, 2)],
+      note: step.title,
+      speech: step.body,
+      sketch: null,
+    })),
+    {
+      lines: ['Answer', solution.finalAnswer],
+      note: 'The result',
+      speech: `That gives us ${solution.finalAnswer}. Say it back in your own words to make it stick.`,
+      sketch: null,
+    },
+  ]
+  const boardSteps = steps.map((step) => ({
+    ...step,
+    lines: step.lines.map((line) => String(line).slice(0, 70)),
+    board: String(step.lines[0]).slice(0, 90),
+  }))
+  return {
+    id: createId('lesson'),
+    title,
+    subject: solution.subject || 'Study',
+    duration: `${boardSteps.length * 2} min`,
+    color: '#6c55f6',
+    custom: true,
+    steps: boardSteps,
+    checkpoint: {
+      prompt: `Which idea is the key to ${title}?`,
+      options: [solution.steps[0]?.title || 'Identify the goal first', 'Skip the setup', 'Memorize only the final answer'],
+      correctIndex: 0,
+    },
+    source: 'local',
+    material: String(material).slice(0, 2000),
+  }
+}
+
+function normalizeLesson(data, fallback) {
+  const steps = ensureArray(data.steps, fallback.steps).map((step, index) => {
+    const lines = ensureArray(step?.lines, fallback.steps[index]?.lines || [])
+      .map((line) => cleanString(line, ''))
+      .filter(Boolean)
+      .map((line) => line.slice(0, 76))
+    if (!lines.length) return null
+    return {
+      lines,
+      board: lines[0],
+      note: cleanString(step?.note, fallback.steps[index]?.note || lines[0]),
+      speech: cleanString(step?.speech, fallback.steps[index]?.speech || lines.join('. ')),
+      sketch: ['parabola', 'parabolaRoots', 'leaf', 'chloroplast', 'cycle', 'chromosomes', 'cells', 'tangent'].includes(step?.sketch) ? step.sketch : null,
+    }
+  }).filter(Boolean)
+
+  const fallbackCheckpoint = fallback.checkpoint
+  const options = ensureArray(data.checkpoint?.options, fallbackCheckpoint.options).map((option) => cleanString(option, '')).filter(Boolean)
+
+  return {
+    ...fallback,
+    id: createId('lesson'),
+    title: cleanString(data.title, fallback.title),
+    subject: cleanString(data.subject, fallback.subject),
+    duration: `${Math.max(3, (steps.length || 4) * 2)} min`,
+    custom: true,
+    color: '#6c55f6',
+    steps: steps.length ? steps : fallback.steps,
+    checkpoint: {
+      prompt: cleanString(data.checkpoint?.prompt, fallbackCheckpoint.prompt),
+      options: options.length >= 2 ? options.slice(0, 4) : fallbackCheckpoint.options,
+      correctIndex: clamp(data.checkpoint?.correctIndex, 0, Math.max((options.length || 3) - 1, 0), 0),
+    },
+    source: 'nvidia',
+  }
+}
+
+export async function aiLesson(topic, material = '') {
+  const fallback = buildLocalLesson(topic, material)
+  try {
+    const data = await requestAi('lesson', {
+      topic: String(topic).slice(0, 400),
+      material: String(material).slice(0, 16000),
+    }, { maxTokens: 4000 })
+    return normalizeLesson(data, fallback)
+  } catch {
+    return fallback
   }
 }

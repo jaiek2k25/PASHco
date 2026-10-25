@@ -26,7 +26,7 @@ const FEATURE_CONTENT = {
   exams: {
     eyebrow: 'FOR EXAM',
     title: 'AI study tools for exam prep to help you ace exams 10X faster',
-    description: 'Upload your notes and past exams. Solvely predicts the topics most likely to appear, generates mock exams, cheat sheets and a review plan.',
+    description: 'Upload your notes and past exams. WeSolve predicts the topics most likely to appear, generates mock exams, cheat sheets and a review plan.',
     cta: 'Start your exam prep for FREE',
     route: '/exam',
     cards: [
@@ -38,11 +38,11 @@ const FEATURE_CONTENT = {
   study: {
     eyebrow: 'FOR STUDY',
     title: 'Master any course, your way',
-    description: 'Upload your slides, PDFs, or YouTube links. Solvely turns them into the AI study tools that actually fit how you learn.',
+    description: 'Upload your slides, PDFs, or YouTube links. WeSolve turns them into the AI study tools that actually fit how you learn.',
     cta: 'Start learning your way',
     route: '/study-guide',
     cards: [
-      { eyebrow: 'Structured reading', title: 'Topic Breakdown + Study Guide', body: 'Solvely breaks your course into bite-sized topics with voice explanation, so every unit clicks before you move on.', preview: 'guide' },
+      { eyebrow: 'Structured reading', title: 'Topic Breakdown + Study Guide', body: 'WeSolve breaks your course into bite-sized topics with voice explanation, so every unit clicks before you move on.', preview: 'guide' },
       { eyebrow: 'Read, flip, review', title: 'Flashcards', body: 'Auto-generated flashcards that focus on what you need to memorize, so the key ideas stick, fast.', preview: 'flash' },
       { eyebrow: 'Practice smarter', title: 'Quiz', body: 'Adaptive quizzes that pinpoint your weak spots and explain exactly why each answer is right or wrong.', preview: 'quiz' },
     ],
@@ -50,11 +50,11 @@ const FEATURE_CONTENT = {
   homework: {
     eyebrow: 'FOR HOMEWORK',
     title: 'Accuracy first. Multi-model cross-check',
-    description: 'Drag and drop any problem — photo, PDF, or typed text. Solvely cross-checks with multiple top AI models to deliver the most accurate answer.',
+    description: 'Drag and drop any problem — photo, PDF, or typed text. WeSolve cross-checks with multiple top AI models to deliver the most accurate answer.',
     cta: 'Solve homework with confidence',
     route: '/home',
     cards: [
-      { eyebrow: 'Cross-check engine', title: 'Multi-Model Cross-Check', body: 'Drag and drop homework files or images. Solvely instantly cross-checks with multiple top-tier models, delivering accurate solutions.', preview: 'check' },
+      { eyebrow: 'Cross-check engine', title: 'Multi-Model Cross-Check', body: 'Drag and drop homework files or images. WeSolve instantly cross-checks with multiple top-tier models, delivering accurate solutions.', preview: 'check' },
       { eyebrow: 'Rendered explanations', title: 'Video & Visual Explanations', body: 'Go beyond a wall of text to visually break down 3D geometry, calculus graphs, and physics simulations.', preview: 'visual' },
       { eyebrow: 'All subjects', title: 'Explanations for All Subjects', body: 'Designed for geometry, calculus plotting, physics force analysis, biochemical structures and all difficult fields.', preview: 'subjects' },
     ],
@@ -62,7 +62,7 @@ const FEATURE_CONTENT = {
   class: {
     eyebrow: 'FOR CLASS',
     title: 'When the lecture moves too fast, we keep up',
-    description: 'Hit record on any lecture. Solvely transcribes, takes notes, and turns them into study sets — so you can focus on understanding, not scribbling.',
+    description: 'Hit record on any lecture. WeSolve transcribes, takes notes, and turns them into study sets — so you can focus on understanding, not scribbling.',
     cta: 'Turn lectures into notes',
     route: '/notes',
     cards: [
@@ -83,10 +83,10 @@ const TESTIMONIALS = [
 ]
 
 const FAQS = [
-  ['What are AI study tools?', 'AI study tools automatically convert course materials — lectures, PDFs, PPTs, videos, and homework questions — into notes, flashcards, quizzes, summaries, and step-by-step solutions. Solvely integrates these capabilities into one app.'],
-  ['What is the best AI study tool?', 'The best tool depends on whether your priority is homework, notes, or exam prep. Solvely brings the full workflow together with multi-model cross-checking for homework answers.'],
-  ['Are Solvely’s AI study tools free?', 'Yes. A free version includes basic homework help and study tools. Unlimited unlocks unlimited study guides, flashcards, quizzes, notes, and exam prep across devices.'],
-  ['Are the homework answers accurate?', 'Solvely uses several AI passes to cross-check every problem and flag conflicting results. Students should still verify important formal assignments with textbooks, teachers, or course materials.'],
+  ['What are AI study tools?', 'AI study tools automatically convert course materials — lectures, PDFs, PPTs, videos, and homework questions — into notes, flashcards, quizzes, summaries, and step-by-step solutions. WeSolve integrates these capabilities into one app.'],
+  ['What is the best AI study tool?', 'The best tool depends on whether your priority is homework, notes, or exam prep. WeSolve brings the full workflow together with multi-model cross-checking for homework answers.'],
+  ['Are WeSolve’s AI study tools free?', 'Yes. A free version includes basic homework help and study tools. Unlimited unlocks unlimited study guides, flashcards, quizzes, notes, and exam prep across devices.'],
+  ['Are the homework answers accurate?', 'WeSolve uses several AI passes to cross-check every problem and flag conflicting results. Students should still verify important formal assignments with textbooks, teachers, or course materials.'],
   ['Which devices are supported?', 'The experience supports Web, iOS, Android, and Chrome or Edge extensions, so your study tools can follow you between devices.'],
   ['What kind of content can I upload?', 'You can upload PDFs, PPTs, images of problems, text, and YouTube video links. You can also record live lectures and generate notes, quizzes, and study materials.'],
 ]
@@ -315,7 +315,7 @@ export default function Landing() {
               <p>The AI study tool trusted by 10M+ students from 5,000+ universities worldwide.</p>
               <div className="hero-cta">
                 <Button size="lg" iconRight={ArrowRight} onClick={() => goToWorkspace('/home')}>Get Started for Free</Button>
-                <Button size="lg" variant="outline" icon={Play} onClick={() => goToWorkspace('/tutor')}>Get the app</Button>
+                <Button size="lg" variant="outline" icon={Play} onClick={() => navigate('/mobile')}>Get the app</Button>
               </div>
               <div className="hero-trust"><div className="avatar-stack"><span>A</span><span>M</span><span>J</span><span>S</span></div><div><div className="stars">★★★★★</div><small>4.8 average rating from students</small></div></div>
               <div className="hero-ai-note"><span className="ai-orb"><Sparkles size={13} /></span><div><strong>Live NVIDIA AI</strong><small>Multi-model answers, image OCR, and study generation</small></div><button onClick={() => setServiceSettingsOpen(true)}>Connect your key <ArrowRight size={13} /></button></div>
@@ -389,7 +389,7 @@ export default function Landing() {
 
         <section className="testimonials-section" id="reviews">
           <div className="container">
-            <div className="section-heading centered"><div className="section-kicker">TESTIMONIALS</div><h2>What students actually say about Solvely.ai</h2><p>Stories from real students using Solvely for exam prep, homework, and in-class notes.</p></div>
+            <div className="section-heading centered"><div className="section-kicker">TESTIMONIALS</div><h2>What students actually say about WeSolve.ai</h2><p>Stories from real students using WeSolve for exam prep, homework, and in-class notes.</p></div>
             <div className="testimonial-grid">
               {visibleTestimonials.map((item) => (
                 <article className="testimonial-card" key={item.name}>
@@ -437,13 +437,13 @@ export default function Landing() {
       <footer className="landing-footer">
         <div className="container">
           <div className="footer-top">
-            <div className="footer-brand"><Brand light /><p>Personalized, accessible, joyful educational experiences for every mind.</p><div className="footer-socials"><a href="#top" aria-label="Community"><Users size={17} /></a><a href="#top" aria-label="Globe"><Globe2 size={17} /></a><a href="#top" aria-label="Resources"><Lightbulb size={17} /></a></div><small className="edition-label">PASHco personalized demo edition</small></div>
+            <div className="footer-brand"><Brand light /><p>Personalized, accessible, joyful educational experiences for every mind.</p><div className="footer-socials"><a href="#top" aria-label="Community"><Users size={17} /></a><a href="#top" aria-label="Globe"><Globe2 size={17} /></a><a href="#top" aria-label="Resources"><Lightbulb size={17} /></a></div><small className="edition-label">WeSolve — built for every student</small></div>
             <div className="footer-column"><h4>Tools</h4>{['AI Humanizer', 'AI Detector', 'AI Paraphraser', 'Plagiarism Checker', 'Word Counter', 'Grammar Checker', 'AI Study Guide Maker', 'AI Quiz Maker'].map((item) => <button key={item} onClick={() => goToWorkspace('/home')}>{item}</button>)}</div>
             <div className="footer-column"><h4>Calculators</h4>{['Solve for x Calculator', 'Algebra Calculator', 'Scientific Calculator', 'AI Geometry Calculator', 'Fraction Calculator', 'Word Problem Solver', 'Equation Solver', 'Photo Math Solver'].map((item) => <button key={item} onClick={() => goToWorkspace('/home')}>{item}</button>)}</div>
             <div className="footer-column"><h4>Resources</h4>{['Blog', 'Download App', 'Download extension', 'Responsible AI', 'About us', 'Affiliate Program', 'Contact us'].map((item) => <button key={item} onClick={() => goToWorkspace(item === 'Download App' ? '/mobile' : '/home')}>{item}</button>)}</div>
             <div className="footer-column"><h4>Company</h4>{['Terms of Service', 'Privacy Policy', 'Honor Code', 'Help center', 'Pricing', 'Reviews'].map((item) => <button key={item} onClick={() => item === 'Pricing' ? navigate('/pricing') : goToWorkspace('/home')}>{item}</button>)}</div>
           </div>
-          <div className="footer-bottom"><span>© 2026 Solvely recreation. Built as a functional prototype for PASHco.</span><div><button onClick={() => goToWorkspace('/home')}>Terms</button><button onClick={() => goToWorkspace('/home')}>Privacy</button><button onClick={() => goToWorkspace('/home')}>Honor Code</button></div></div>
+          <div className="footer-bottom"><span>© 2026 WeSolve. Built for students everywhere.</span><div><button onClick={() => goToWorkspace('/home')}>Terms</button><button onClick={() => goToWorkspace('/home')}>Privacy</button><button onClick={() => goToWorkspace('/home')}>Honor Code</button></div></div>
         </div>
       </footer>
     </div>

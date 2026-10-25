@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowRight, BookOpen, BrainCircuit, CalendarDays, Check, Chrome, ClipboardCheck, Copy, Crown, Download, ExternalLink, FileText, GraduationCap, History, KeyRound, Layers3, LogOut, Mail, NotebookPen, Plus, RotateCcw, Search, Settings, ShieldCheck, Smartphone, Sparkles, Star, Trash2, Upload, UserRound, X, Zap } from 'lucide-react'
+import { ArrowRight, BookOpen, BrainCircuit, CalendarDays, Check, Chrome, ClipboardCheck, Copy, Crown, Download, ExternalLink, FileText, GraduationCap, History, KeyRound, Layers3, LogOut, Mail, NotebookPen, Plus, RefreshCw, RotateCcw, Search, Settings, ShieldCheck, Smartphone, Sparkles, Star, Trash2, Upload, UserRound, X, Zap } from 'lucide-react'
 import ToolTabs from '../components/ToolTabs'
 import PageHeader from '../components/PageHeader'
 import MarketingHeader from '../components/MarketingHeader'
@@ -22,7 +22,7 @@ export function HistoryPage() {
 
   const exportHistory = () => {
     const text = state.history.map((item) => `# ${item.question}\n\nSubject: ${item.subject}\nFinal answer: ${item.finalAnswer}\n\n${item.steps.map((step, index) => `${index + 1}. ${step.title}: ${step.body}`).join('\n')}`).join('\n\n---\n\n')
-    downloadText('solvely-solve-history.md', text || 'No solve history yet.', 'text/markdown')
+    downloadText('wesolve-solve-history.md', text || 'No solve history yet.', 'text/markdown')
   }
 
   return (
@@ -69,13 +69,22 @@ function MicIcon(props) {
 }
 
 export function AccountPage() {
-  const { state, setAuthOpen, signOut, setPlan, setUpgradeOpen, updateOnboarding, updateSettings, resetWorkspace, toast, setServiceSettingsOpen, serviceSettingsVersion } = useApp()
+  const {
+    state, auth, isAuthenticated, setAuthOpen, signOut, setUpgradeOpen, updateOnboarding,
+    updateSettings, resetWorkspace, toast, setServiceSettingsOpen, serviceSettingsVersion,
+    updateProfile, changePassword, deleteAccount, syncNow, setPlan,
+  } = useApp()
   const [name, setName] = useState(state.user?.name || '')
-  const [email, setEmail] = useState(state.user?.email || '')
   const [level, setLevel] = useState(state.onboarding.level || '')
   const [goal, setGoal] = useState(state.onboarding.goal || '')
   const [aiStatus, setAiStatus] = useState(null)
   const [serviceSettings, setLocalServiceSettings] = useState(getServiceSettings)
+  const [savingProfile, setSavingProfile] = useState(false)
+  const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' })
+  const [passwordBusy, setPasswordBusy] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deleteBusy, setDeleteBusy] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -84,29 +93,213 @@ export function AccountPage() {
     return () => { active = false }
   }, [serviceSettingsVersion])
 
+  useEffect(() => {
+    setName(state.user?.name || '')
+  }, [state.user?.name])
+
+  const initials = (state.user?.name || 'W').split(/\s+/).map((word) => word[0]).join('').slice(0, 2).toUpperCase()
+  const joined = state.user?.joinedAt ? new Date(state.user.joinedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : ''
+
+  const syncLabel = {
+    synced: { text: 'Synced to account', tone: 'green' },
+    saving: { text: 'Saving changes…', tone: 'purple' },
+    pending: { text: 'Changes queued', tone: 'purple' },
+    error: { text: 'Sync needs attention', tone: 'gray' },
+    local: { text: 'Saved on this device', tone: 'gray' },
+    offline: { text: 'Offline — local only', tone: 'gray' },
+  }[auth.syncState] || { text: 'Local only', tone: 'gray' }
+
+  const saveProfile = async () => {
+    if (!name.trim()) {
+      toast('Enter your name first.', 'error')
+      return
+    }
+    setSavingProfile(true)
+    try {
+      if (isAuthenticated) await updateProfile({ name: name.trim() })
+      else toast('Profile saved on this device. Create an account to sync it.')
+    } catch (error) {
+      toast(error.message || 'Could not save your profile.', 'error')
+    } finally {
+      setSavingProfile(false)
+    }
+  }
+
+  const submitPassword = async (event) => {
+    event.preventDefault()
+    if (passwordForm.next.length < 8) {
+      toast('Your new password needs at least 8 characters.', 'error')
+      return
+    }
+    if (passwordForm.next !== passwordForm.confirm) {
+      toast('The new passwords do not match.', 'error')
+      return
+    }
+    setPasswordBusy(true)
+    try {
+      await changePassword({ currentPassword: passwordForm.current, nextPassword: passwordForm.next })
+      setPasswordForm({ current: '', next: '', confirm: '' })
+    } catch (error) {
+      toast(error.message || 'Could not change your password.', 'error')
+    } finally {
+      setPasswordBusy(false)
+    }
+  }
+
+  const confirmDelete = async () => {
+    setDeleteBusy(true)
+    try {
+      await deleteAccount(deletePassword)
+      setDeleteOpen(false)
+      setDeletePassword('')
+    } catch (error) {
+      toast(error.message || 'Could not delete your account.', 'error')
+    } finally {
+      setDeleteBusy(false)
+    }
+  }
+
   return (
     <div className="app-page account-page">
       <ToolTabs />
-      <PageHeader eyebrow="ACCOUNT" title="Account & settings" description="Personalize your study experience and manage your local demo workspace." />
+      <PageHeader eyebrow="ACCOUNT" title="Account & settings" description="Manage your WeSolve profile, synced workspace, and security." />
+
       <div className="account-layout">
         <div className="account-main">
-          <section className="account-card profile-card"><div className="account-card-head"><div><h2>Profile</h2><p>This information is stored only in your browser.</p></div><span className="avatar large">{(state.user?.name || 'S').split(/\s+/).map((word) => word[0]).join('').slice(0, 2).toUpperCase()}</span></div>
-            {state.user ? <div className="profile-form"><label><span>Full name</span><input value={name} onChange={(event) => setName(event.target.value)} /></label><label><span>Email</span><div className="input-with-icon"><Mail size={16} /><input value={email} onChange={(event) => setEmail(event.target.value)} /></div></label><Button onClick={() => toast('Profile saved in this demo session.')}>Save profile</Button><Button variant="outline" icon={LogOut} onClick={signOut}>Sign out</Button></div> : <div className="signed-out"><UserRound size={24} /><h3>You’re using a guest workspace</h3><p>Sign in locally to personalize the profile and keep the same workspace identity.</p><Button icon={ArrowRight} onClick={() => setAuthOpen(true)}>Sign in for free</Button></div>}
+          <section className="account-card profile-card">
+            <div className="account-card-head">
+              <div><h2>Profile</h2><p>{isAuthenticated ? 'This profile is stored in your WeSolve account.' : 'You are working as a guest on this device.'}</p></div>
+              <span className="avatar large">{initials}</span>
+            </div>
+            {isAuthenticated ? (
+              <div className="profile-form">
+                <label><span>Full name</span><input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" /></label>
+                <label><span>Email</span><div className="input-with-icon readonly-field"><Mail size={16} /><input value={state.user.email} readOnly /></div></label>
+                <div className="profile-meta"><span>Member since {joined}</span><span>{state.user.email}</span></div>
+                <div className="profile-actions">
+                  <Button onClick={saveProfile} disabled={savingProfile}>{savingProfile ? 'Saving…' : 'Save profile'}</Button>
+                  <Button variant="outline" icon={LogOut} onClick={signOut}>Sign out</Button>
+                </div>
+              </div>
+            ) : (
+              <div className="signed-out">
+                <UserRound size={24} />
+                <h3>Create an account to sync everything</h3>
+                <p>Right now your solves, study sets, and notes live only in this browser. An account keeps them on the server and available on any device.</p>
+                <Button icon={ArrowRight} onClick={() => setAuthOpen(true)}>Create free account</Button>
+              </div>
+            )}
           </section>
-          <section className="account-card"><div className="account-card-head"><div><h2>Learning preferences</h2><p>We use these to tune recommendations and explanations.</p></div><Settings size={20} /></div><div className="preference-grid"><label><span>Education level</span><select value={level} onChange={(event) => setLevel(event.target.value)}><option value="">Select level</option><option>Middle School</option><option>High School</option><option>Community college</option><option>University & college</option><option>Other</option></select></label><label><span>Main goal</span><select value={goal} onChange={(event) => setGoal(event.target.value)}><option value="">Select a goal</option><option>Finish homework faster</option><option>Prepare for an exam</option><option>Understand difficult concepts</option><option>Improve my GPA</option></select></label></div><Button variant="outline" icon={Check} onClick={() => { updateOnboarding({ level, goal, completed: true }); toast('Learning preferences saved.') }}>Save preferences</Button></section>
-          <section className="account-card"><div className="account-card-head"><div><h2>App settings</h2><p>Control voice, layout, and productivity features.</p></div></div><div className="settings-list">{[
-            ['voiceEnabled', 'Voice explanations', 'Read tutor steps and study notes aloud.'],
-            ['compactMode', 'Compact workspace', 'Reduce spacing in lists and cards.'],
-            ['emailUpdates', 'Study reminders', 'Show local reminder prompts in the workspace.'],
-          ].map(([key, title, description]) => <label className="toggle-row" key={key}><div><strong>{title}</strong><small>{description}</small></div><input type="checkbox" checked={Boolean(state.settings[key])} onChange={(event) => updateSettings({ [key]: event.target.checked })} /><span className="toggle" /></label>)}</div></section>
+
+          <section className="account-card sync-card">
+            <div className="account-card-head">
+              <div><h2>Workspace sync</h2><p>Your study data follows you across devices when you are signed in.</p></div>
+              <Badge tone={syncLabel.tone}>{syncLabel.text}</Badge>
+            </div>
+            <div className="sync-grid">
+              <div><span>Solves</span><strong>{state.history.length}</strong></div>
+              <div><span>Study sets</span><strong>{state.studySets.length}</strong></div>
+              <div><span>Notes</span><strong>{state.notes.length}</strong></div>
+              <div><span>Research</span><strong>{state.research.length}</strong></div>
+              <div><span>Exam plans</span><strong>{state.exams.length}</strong></div>
+              <div><span>Settings</span><strong>Synced</strong></div>
+            </div>
+            {auth.error && <p className="sync-error">{auth.error}</p>}
+            <div className="sync-actions">
+              <span>{auth.syncedAt ? `Last saved ${new Date(auth.syncedAt).toLocaleString()}` : isAuthenticated ? 'Waiting for the first sync…' : 'Sign in to enable cloud sync'}</span>
+              <Button variant="outline" size="sm" icon={RefreshCw} onClick={() => syncNow()}>{isAuthenticated ? 'Sync now' : 'Sign in to sync'}</Button>
+            </div>
+          </section>
+
+          <section className="account-card">
+            <div className="account-card-head"><div><h2>Learning preferences</h2><p>We use these to tune recommendations and explanations.</p></div><Settings size={20} /></div>
+            <div className="preference-grid">
+              <label><span>Education level</span><select value={level} onChange={(event) => setLevel(event.target.value)}><option value="">Select level</option><option>Middle School</option><option>High School</option><option>Community college</option><option>University & college</option><option>Other</option></select></label>
+              <label><span>Main goal</span><select value={goal} onChange={(event) => setGoal(event.target.value)}><option value="">Select a goal</option><option>Finish homework faster</option><option>Prepare for an exam</option><option>Understand difficult concepts</option><option>Improve my GPA</option></select></label>
+            </div>
+            <Button variant="outline" icon={Check} onClick={() => { updateOnboarding({ level, goal, completed: true }); toast('Learning preferences saved.') }}>Save preferences</Button>
+          </section>
+
+          <section className="account-card">
+            <div className="account-card-head"><div><h2>App settings</h2><p>Control voice, layout, and productivity features.</p></div></div>
+            <div className="settings-list">
+              {[
+                ['voiceEnabled', 'Voice explanations', 'Read tutor steps and study notes aloud.'],
+                ['compactMode', 'Compact workspace', 'Reduce spacing in lists and cards.'],
+                ['emailUpdates', 'Study reminders', 'Show local reminder prompts in the workspace.'],
+              ].map(([key, title, description]) => (
+                <label className="toggle-row" key={key}>
+                  <div><strong>{title}</strong><small>{description}</small></div>
+                  <input type="checkbox" checked={Boolean(state.settings[key])} onChange={(event) => updateSettings({ [key]: event.target.checked })} />
+                  <span className="toggle" />
+                </label>
+              ))}
+            </div>
+          </section>
+
+          {isAuthenticated && (
+            <section className="account-card security-card">
+              <div className="account-card-head"><div><h2>Security</h2><p>Passwords are hashed with scrypt and sessions use HTTP-only cookies.</p></div><ShieldCheck size={20} /></div>
+              <form className="password-form" onSubmit={submitPassword}>
+                <label><span>Current password</span><input type="password" value={passwordForm.current} onChange={(event) => setPasswordForm((form) => ({ ...form, current: event.target.value }))} autoComplete="current-password" /></label>
+                <div className="preference-grid">
+                  <label><span>New password</span><input type="password" value={passwordForm.next} onChange={(event) => setPasswordForm((form) => ({ ...form, next: event.target.value }))} autoComplete="new-password" /></label>
+                  <label><span>Confirm new password</span><input type="password" value={passwordForm.confirm} onChange={(event) => setPasswordForm((form) => ({ ...form, confirm: event.target.value }))} autoComplete="new-password" /></label>
+                </div>
+                <Button type="submit" variant="outline" icon={Lock} disabled={passwordBusy}>{passwordBusy ? 'Updating…' : 'Change password'}</Button>
+              </form>
+              <div className="danger-zone">
+                <div><strong>Delete account</strong><p>Removes the profile and all synced study data from this server. This cannot be undone.</p></div>
+                <Button variant="danger" size="sm" icon={Trash2} onClick={() => setDeleteOpen(true)}>Delete account</Button>
+              </div>
+            </section>
+          )}
         </div>
+
         <aside className="account-side">
-          <div className={`account-plan ${state.plan === 'pro' ? 'pro' : ''}`}><Crown size={24} /><Badge tone={state.plan === 'pro' ? 'light' : 'gray'}>{state.plan === 'pro' ? 'PRO ACTIVE' : 'FREE PLAN'}</Badge><h2>{state.plan === 'pro' ? 'Solvely Unlimited' : 'Starter'}</h2><p>{state.plan === 'pro' ? 'Every study tool is unlocked in this demo workspace.' : `${Math.max(0, 2 - state.solvesUsed)} of 2 free solves remaining.`}</p><ProgressBar value={state.plan === 'pro' ? 100 : Math.min(100, (state.solvesUsed / 2) * 100)} label="Plan usage" tone={state.plan === 'pro' ? 'green' : 'purple'} /><Button variant={state.plan === 'pro' ? 'outline' : 'primary'} className="full-width" onClick={() => state.plan === 'pro' ? setPlan('free') : setUpgradeOpen(true)}>{state.plan === 'pro' ? 'Switch to Free' : 'Upgrade to Pro'}</Button></div>
-          <div className="side-card connection-card"><div className="side-card-head"><h3>Connected services</h3><Badge tone={aiStatus?.configured ? 'green' : 'gray'}>{aiStatus?.configured ? 'AI ON' : 'LOCAL'}</Badge></div><div className="connection-row"><span><KeyRound size={17} /></span><div><strong>NVIDIA Build</strong><small>{aiStatus?.configured ? `Connected · ${aiStatus.model}` : serviceSettings.nvidiaApiKey ? `Key saved ${maskKey(serviceSettings.nvidiaApiKey)}` : 'No API key connected'}</small></div></div><div className="connection-row"><span><Chrome size={17} /></span><div><strong>Google OAuth</strong><small>{serviceSettings.googleClientId ? 'Client ID configured' : 'Not configured'}</small></div></div>{state.user?.provider === 'google' && <div className="google-profile-note"><Check size={14} /> Signed in with Google as {state.user.email}</div>}<Button variant="outline" size="sm" className="full-width" icon={Settings} onClick={() => setServiceSettingsOpen(true)}>Manage connections</Button></div>
-          <div className="side-card usage-card"><h3>Workspace usage</h3><div><span>Solves</span><strong>{state.history.length}</strong></div><div><span>Study sets</span><strong>{state.studySets.length}</strong></div><div><span>Notes</span><strong>{state.notes.length}</strong></div><div><span>Research drafts</span><strong>{state.research.length}</strong></div><div><span>Exam plans</span><strong>{state.exams.length}</strong></div></div>
-          <div className="side-card danger-card"><ShieldCheck size={20} /><h3>Local demo data</h3><p>Everything is saved in your browser’s local storage. You can reset the workspace at any time.</p><Button variant="danger" size="sm" className="full-width" icon={RotateCcw} onClick={resetWorkspace}>Reset workspace</Button></div>
+          <div className={`account-plan ${state.plan === 'pro' ? 'pro' : ''}`}>
+            <Crown size={24} />
+            <Badge tone={state.plan === 'pro' ? 'light' : 'gray'}>{state.plan === 'pro' ? 'PRO ACTIVE' : 'FREE PLAN'}</Badge>
+            <h2>{state.plan === 'pro' ? 'WeSolve Unlimited' : 'Starter'}</h2>
+            <p>{state.plan === 'pro' ? 'Every study tool is unlocked for your account.' : `${Math.max(0, 2 - state.solvesUsed)} of 2 free solves remaining.`}</p>
+            <ProgressBar value={state.plan === 'pro' ? 100 : Math.min(100, (state.solvesUsed / 2) * 100)} label="Plan usage" tone={state.plan === 'pro' ? 'green' : 'purple'} />
+            <Button variant={state.plan === 'pro' ? 'outline' : 'primary'} className="full-width" onClick={() => state.plan === 'pro' ? setPlan('free') : setUpgradeOpen(true)}>{state.plan === 'pro' ? 'Switch to Free' : 'Upgrade to Pro'}</Button>
+          </div>
+
+          <div className="side-card usage-card">
+            <h3>Workspace usage</h3>
+            <div><span>Solves</span><strong>{state.history.length}</strong></div>
+            <div><span>Study sets</span><strong>{state.studySets.length}</strong></div>
+            <div><span>Notes</span><strong>{state.notes.length}</strong></div>
+            <div><span>Research drafts</span><strong>{state.research.length}</strong></div>
+            <div><span>Exam plans</span><strong>{state.exams.length}</strong></div>
+          </div>
+
+          <div className="side-card connection-card">
+            <div className="side-card-head"><h3>Connected services</h3><Badge tone={aiStatus?.configured ? 'green' : 'gray'}>{aiStatus?.configured ? 'AI ON' : 'LOCAL'}</Badge></div>
+            <div className="connection-row"><span><KeyRound size={17} /></span><div><strong>NVIDIA Build</strong><small>{aiStatus?.configured ? `Connected · ${aiStatus.model}` : serviceSettings.nvidiaApiKey ? `Key saved ${maskKey(serviceSettings.nvidiaApiKey)}` : 'No API key connected'}</small></div></div>
+            <div className="connection-row"><span><UserRound size={17} /></span><div><strong>WeSolve account</strong><small>{isAuthenticated ? state.user.email : 'Guest workspace'}</small></div></div>
+            <Button variant="outline" size="sm" className="full-width" icon={Settings} onClick={() => setServiceSettingsOpen(true)}>Manage AI settings</Button>
+          </div>
+
+          <div className="side-card danger-card">
+            <ShieldCheck size={20} />
+            <h3>Local workspace data</h3>
+            <p>This browser keeps a copy of your workspace. Reset it to start fresh; signed-in accounts keep the server copy until the next sync.</p>
+            <Button variant="danger" size="sm" className="full-width" icon={RotateCcw} onClick={resetWorkspace}>Reset workspace</Button>
+          </div>
         </aside>
       </div>
+
+      <Modal
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        title="Delete your WeSolve account?"
+        subtitle="This removes your profile and every synced solve, study set, note, and exam plan."
+        footer={<><Button variant="ghost" onClick={() => setDeleteOpen(false)}>Keep account</Button><Button variant="danger" icon={Trash2} onClick={confirmDelete} disabled={deleteBusy || !deletePassword}>{deleteBusy ? 'Deleting…' : 'Delete permanently'}</Button></>}
+      >
+        <label className="field-label"><span>Confirm with your password</span><input type="password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} placeholder="Your current password" autoComplete="current-password" /></label>
+      </Modal>
     </div>
   )
 }
@@ -117,10 +310,10 @@ export function DownloadPage() {
     <div className="download-page">
       <MarketingHeader />
       <main className="container download-layout">
-        <div className="download-copy"><Badge tone="purple"><Smartphone size={14} /> Solvely anywhere</Badge><h1>Your AI study tools,<br /><span>wherever you study.</span></h1><p>Solve homework from your phone, capture lectures on your laptop, and take the Chrome extension anywhere on the web.</p><div className="download-buttons"><button onClick={() => toast('Mobile app download is simulated in this demo.')}><span>●●</span><div><small>Download on the</small><strong>App Store</strong></div></button><button onClick={() => toast('Mobile app download is simulated in this demo.')}><span>▶</span><div><small>GET IT ON</small><strong>Google Play</strong></div></button></div><div className="download-features"><div><Check size={16} /> Scan and solve anything</div><div><Check size={16} /> Sync study sets across devices</div><div><Check size={16} /> Record lectures in real time</div></div></div>
-        <div className="download-visual"><div className="phone-frame"><div className="phone-notch" /><div className="phone-screen"><div className="phone-head"><span><Sparkles size={15} /></span><strong>Solvely AI</strong><small>Fast ▾</small></div><div className="phone-question">Solve for x<br /><b>3x + 6 = 42</b></div><div className="phone-step"><small>STEP 2</small><p>Subtract 6 from both sides</p><strong>3x = 36</strong></div><div className="phone-answer"><small>FINAL ANSWER</small><strong>x = 12</strong></div><div className="phone-tabs"><span>Answer</span><span>Steps</span><span>Video</span></div></div></div><div className="qr-card"><div className="qr-grid">{Array.from({ length: 81 }).map((_, index) => <i key={index} className={[0, 1, 2, 8, 10, 16, 18, 19, 20, 24, 26, 28, 32, 36, 38, 40, 44, 46, 48, 52, 54, 56, 60, 61, 62, 64, 70, 72, 78, 79, 80].includes(index) ? 'on' : ''} />)}</div><p>Scan to open the web app</p></div></div>
+        <div className="download-copy"><Badge tone="purple"><Smartphone size={14} /> WeSolve anywhere</Badge><h1>Your AI study tools,<br /><span>wherever you study.</span></h1><p>Solve homework from your phone, capture lectures on your laptop, and take the Chrome extension anywhere on the web.</p><div className="download-buttons"><button onClick={() => toast('Mobile app download is simulated in this demo.')}><span>●●</span><div><small>Download on the</small><strong>App Store</strong></div></button><button onClick={() => toast('Mobile app download is simulated in this demo.')}><span>▶</span><div><small>GET IT ON</small><strong>Google Play</strong></div></button></div><div className="download-features"><div><Check size={16} /> Scan and solve anything</div><div><Check size={16} /> Sync study sets across devices</div><div><Check size={16} /> Record lectures in real time</div></div></div>
+        <div className="download-visual"><div className="phone-frame"><div className="phone-notch" /><div className="phone-screen"><div className="phone-head"><span><Sparkles size={15} /></span><strong>WeSolve AI</strong><small>Fast ▾</small></div><div className="phone-question">Solve for x<br /><b>3x + 6 = 42</b></div><div className="phone-step"><small>STEP 2</small><p>Subtract 6 from both sides</p><strong>3x = 36</strong></div><div className="phone-answer"><small>FINAL ANSWER</small><strong>x = 12</strong></div><div className="phone-tabs"><span>Answer</span><span>Steps</span><span>Video</span></div></div></div><div className="qr-card"><div className="qr-grid">{Array.from({ length: 81 }).map((_, index) => <i key={index} className={[0, 1, 2, 8, 10, 16, 18, 19, 20, 24, 26, 28, 32, 36, 38, 40, 44, 46, 48, 52, 54, 56, 60, 61, 62, 64, 70, 72, 78, 79, 80].includes(index) ? 'on' : ''} />)}</div><p>Scan to open the web app</p></div></div>
       </main>
-      <section className="extension-section"><div className="container extension-card"><div><Badge tone="light"><Chrome size={14} /> Chrome Extension</Badge><h2>Solve anywhere on the web</h2><p>Highlight a question on Canvas, Blackboard, Moodle, or any webpage and get step-by-step help without switching tabs.</p><Button variant="light" icon={ExternalLink} onClick={() => toast('Extension install is simulated in this demo.')}>Get the Chrome Extension</Button></div><div className="extension-preview"><div className="browser-bar"><span /><span /><span /><div>https://learning.example/quiz</div></div><div className="browser-content"><h4>Question 4</h4><p>Solve for x: <strong>3x + 6 = 42</strong></p><div className="extension-popup"><div><Sparkles size={17} /><strong>Solvely AI</strong></div><p>Subtract 6, then divide by 3.</p><b>x = 12</b><button>Explain further</button></div></div></div></div></section>
+      <section className="extension-section"><div className="container extension-card"><div><Badge tone="light"><Chrome size={14} /> Chrome Extension</Badge><h2>Solve anywhere on the web</h2><p>Highlight a question on Canvas, Blackboard, Moodle, or any webpage and get step-by-step help without switching tabs.</p><Button variant="light" icon={ExternalLink} onClick={() => toast('Extension install is simulated in this demo.')}>Get the Chrome Extension</Button></div><div className="extension-preview"><div className="browser-bar"><span /><span /><span /><div>https://learning.example/quiz</div></div><div className="browser-content"><h4>Question 4</h4><p>Solve for x: <strong>3x + 6 = 42</strong></p><div className="extension-popup"><div><Sparkles size={17} /><strong>WeSolve AI</strong></div><p>Subtract 6, then divide by 3.</p><b>x = 12</b><button>Explain further</button></div></div></div></div></section>
     </div>
   )
 }

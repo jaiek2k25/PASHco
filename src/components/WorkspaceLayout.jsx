@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Bell, BookOpen, BrainCircuit, ChevronDown, CircleHelp, ClipboardCheck, Crown, FileClock, GraduationCap, History, KeyRound, Layers3, LogOut, Menu, Mic2, NotebookPen, Search, Settings, Sparkles, UserRound, X, Zap } from 'lucide-react'
+import { Bell, BookOpen, BrainCircuit, Check, ChevronDown, CircleHelp, ClipboardCheck, Cloud, CloudOff, Crown, FileClock, GraduationCap, History, KeyRound, Layers3, LoaderCircle, LogOut, Menu, Mic2, NotebookPen, Search, Settings, Sparkles, UserRound, X, Zap } from 'lucide-react'
 import { Brand, BrandMark } from './Brand'
 import { Badge, Button } from './Common'
 import { useApp } from '../context/AppContext'
@@ -52,7 +52,7 @@ const TITLES = {
 export default function WorkspaceLayout() {
   const location = useLocation()
   const navigate = useNavigate()
-  const { state, setUpgradeOpen, setAuthOpen, signOut, toast, mobileMenuOpen, setMobileMenuOpen, setServiceSettingsOpen, serviceSettingsVersion } = useApp()
+  const { state, auth, isAuthenticated, setUpgradeOpen, setAuthOpen, signOut, toast, mobileMenuOpen, setMobileMenuOpen, setServiceSettingsOpen, serviceSettingsVersion, syncNow } = useApp()
   const [profileOpen, setProfileOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [aiStatus, setAiStatus] = useState(null)
@@ -135,18 +135,34 @@ export default function WorkspaceLayout() {
             <kbd>⏎</kbd>
           </form>
           <div className="topbar-actions">
+            <button
+              className={`sync-chip ${isAuthenticated ? auth.syncState : 'local'}`}
+              onClick={() => isAuthenticated ? syncNow() : setAuthOpen(true)}
+              title={isAuthenticated ? 'Sync workspace to your account' : 'Sign in to sync across devices'}
+            >
+              {auth.syncState === 'saving' ? <LoaderCircle size={15} className="spin" /> : isAuthenticated ? <Cloud size={15} /> : <CloudOff size={15} />}
+              <span>{auth.syncState === 'saving' ? 'Saving' : isAuthenticated ? 'Synced' : 'Sign in to sync'}</span>
+            </button>
             <button className="icon-button" aria-label="Help" onClick={() => toast('Tip: try a sample question from the Solver home.')}><CircleHelp size={19} /></button>
             <button className="icon-button notification-button" aria-label="Notifications" onClick={() => toast('You are all caught up!')}><Bell size={19} /><span /></button>
             <button className={`ai-status-button ${aiStatus?.configured ? 'connected' : ''}`} onClick={() => setServiceSettingsOpen(true)} title={aiStatus?.configured ? `NVIDIA AI connected (${aiStatus.model})` : 'Connect NVIDIA AI'}><span className="ai-status-dot" /><KeyRound size={16} /><span className="ai-status-label">{aiStatus?.configured ? 'AI on' : 'Connect AI'}</span></button>
             {state.plan === 'free' && <Button size="sm" className="hide-mobile" icon={Crown} onClick={() => setUpgradeOpen(true)}>Upgrade</Button>}
             <div className="profile-wrap">
-              <button className="profile-button" onClick={() => state.user ? setProfileOpen((open) => !open) : setAuthOpen(true)} aria-label="Open profile menu">
+              <button className="profile-button" onClick={() => setProfileOpen((open) => !open)} aria-label="Open profile menu">
                 <span>{initials}</span><ChevronDown size={15} />
               </button>
+              {profileOpen && !state.user && (
+                <div className="profile-menu guest-menu">
+                  <div className="profile-menu-head"><div className="avatar">G</div><div><strong>Guest workspace</strong><small>Not synced</small></div></div>
+                  <button onClick={() => { setAuthOpen(true); setProfileOpen(false) }}><Sparkles size={16} /> Create a free account</button>
+                  <Link to="/account" onClick={() => setProfileOpen(false)}><Settings size={16} /> Account & settings</Link>
+                </div>
+              )}
               {profileOpen && state.user && (
                 <div className="profile-menu">
                   <div className="profile-menu-head"><div className="avatar">{initials}</div><div><strong>{state.user.name}</strong><small>{state.user.email}</small></div></div>
-                  <Link to="/account"><Settings size={16} /> Account settings</Link>
+                  <div className="profile-sync-line">{isAuthenticated ? <><Check size={13} /> Workspace synced to account</> : <><CloudOff size={13} /> Guest — saved on this device</>}</div>
+                  <Link to="/account" onClick={() => setProfileOpen(false)}><Settings size={16} /> Account settings</Link>
                   <button onClick={() => setUpgradeOpen(true)}><Crown size={16} /> {state.plan === 'pro' ? 'Manage Pro' : 'Upgrade plan'}</button>
                   <button onClick={() => { signOut(); setProfileOpen(false) }}><LogOut size={16} /> Sign out</button>
                 </div>

@@ -1,8 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
-import { AlertCircle, ArrowRight, Check, CheckCircle2, Chrome, Crown, LoaderCircle, Lock, Mail, Settings, ShieldCheck, Sparkles, User, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { AlertCircle, ArrowRight, Check, CheckCircle2, Crown, Eye, EyeOff, LoaderCircle, Lock, Mail, ShieldCheck, Sparkles, User, X } from 'lucide-react'
 import { useApp } from '../context/AppContext'
-import { getServiceSettings } from '../lib/serviceSettings'
-import { renderGoogleButton, verifyGoogleCredential } from '../lib/googleAuth'
 
 export function Button({ children, variant = 'primary', size = 'md', className = '', icon: Icon, iconRight: IconRight, ...props }) {
   return (
@@ -63,97 +61,114 @@ export function ToastHost() {
 }
 
 export function AuthModal() {
-  const { authOpen, setAuthOpen, signIn, setServiceSettingsOpen, serviceSettingsVersion, toast } = useApp()
+  const { authOpen, setAuthOpen, signIn, signUp } = useApp()
   const [mode, setMode] = useState('signup')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [googleClientId, setGoogleClientId] = useState('')
-  const [googleError, setGoogleError] = useState('')
-  const googleButtonRef = useRef(null)
+  const [error, setError] = useState('')
+  const [field, setField] = useState('')
 
   useEffect(() => {
     if (!authOpen) return
-    const settings = getServiceSettings()
-    setGoogleClientId(settings.googleClientId || '')
-    setGoogleError('')
-  }, [authOpen, serviceSettingsVersion])
+    setError('')
+    setField('')
+  }, [authOpen, mode])
 
-  useEffect(() => {
-    if (!authOpen || !googleClientId || !googleButtonRef.current) return undefined
-    let cancelled = false
-    renderGoogleButton(googleButtonRef.current, googleClientId, async ({ credential }) => {
-      try {
-        const profile = await verifyGoogleCredential(credential, googleClientId)
-        signIn(profile)
-        toast(`Signed in with Google as ${profile.email}.`)
-      } catch (error) {
-        setGoogleError(error.message || 'Google sign-in failed.')
-      }
-    }).catch((error) => {
-      if (!cancelled) setGoogleError(error.message || 'Google sign-in is unavailable.')
-    })
-    return () => { cancelled = true }
-  }, [authOpen, googleClientId, serviceSettingsVersion, signIn, toast])
-
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault()
-    if (mode === 'signup' && !name.trim()) return
-    if (!email.trim() || !email.includes('@')) return
+    setError('')
+    setField('')
+
+    if (mode === 'signup' && name.trim().length < 2) {
+      setError('Please enter your full name.')
+      setField('name')
+      return
+    }
+    if (!email.includes('@')) {
+      setError('Enter a valid email address.')
+      setField('email')
+      return
+    }
+    if (password.length < 8) {
+      setError('Your password needs at least 8 characters.')
+      setField('password')
+      return
+    }
+
     setLoading(true)
-    window.setTimeout(() => {
-      signIn({ name: name || email.split('@')[0], email })
-      setLoading(false)
+    try {
+      if (mode === 'signup') {
+        await signUp({ name: name.trim(), email: email.trim(), password })
+      } else {
+        await signIn({ email: email.trim(), password })
+      }
       setName('')
       setEmail('')
-    }, 650)
+      setPassword('')
+    } catch (requestError) {
+      setError(requestError.message || 'Something went wrong. Please try again.')
+      setField(requestError.field || '')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
     <Modal
       open={authOpen}
       onClose={() => setAuthOpen(false)}
-      title={mode === 'signup' ? 'Create your free account' : 'Welcome back'}
-      subtitle="Save solves, study sets, notes, and your exam plan in this browser."
+      title={mode === 'signup' ? 'Create your WeSolve account' : 'Welcome back'}
+      subtitle="Your solves, study sets, notes, and exam plans sync to this account."
       width={470}
     >
       <div className="auth-tabs">
-        <button className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>Sign up</button>
+        <button className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>Create account</button>
         <button className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Log in</button>
       </div>
-      <form className="auth-form" onSubmit={submit}>
+
+      {error && <div className="auth-error" role="alert"><AlertCircle size={16} /><span>{error}</span></div>}
+
+      <form className="auth-form" onSubmit={submit} noValidate>
         {mode === 'signup' && (
           <label>
             <span>Full name</span>
-            <div className="input-with-icon"><User size={17} /><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Alex Morgan" /></div>
+            <div className={`input-with-icon ${field === 'name' ? 'invalid' : ''}`}><User size={17} /><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Alex Morgan" autoComplete="name" /></div>
           </label>
         )}
         <label>
           <span>Email address</span>
-          <div className="input-with-icon"><Mail size={17} /><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@university.edu" /></div>
+          <div className={`input-with-icon ${field === 'email' ? 'invalid' : ''}`}><Mail size={17} /><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@university.edu" autoComplete="email" /></div>
         </label>
         <label>
           <span>Password</span>
-          <div className="input-with-icon"><Lock size={17} /><input type="password" defaultValue="demo-pass-2026" placeholder="••••••••" /></div>
+          <div className={`input-with-icon password-field ${field === 'password' ? 'invalid' : ''}`}>
+            <Lock size={17} />
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="At least 8 characters"
+              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+            />
+            <button type="button" className="password-toggle" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
+              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
         </label>
         <Button type="submit" size="lg" className="full-width" disabled={loading}>
-          {loading ? <><LoaderCircle className="spin" size={17} /> Creating workspace…</> : <>{mode === 'signup' ? 'Continue for free' : 'Log in'} <ArrowRight size={17} /></>}
+          {loading
+            ? <><LoaderCircle className="spin" size={17} /> {mode === 'signup' ? 'Creating your workspace…' : 'Signing you in…'}</>
+            : <>{mode === 'signup' ? 'Create free account' : 'Log in'} <ArrowRight size={17} /></>}
         </Button>
       </form>
-      <div className="auth-divider"><span>or continue with</span></div>
-      {googleClientId ? (
-        <div className="google-oauth-wrap">
-          <div ref={googleButtonRef} className="google-button-host" />
-          {googleError && <p className="google-error">{googleError}</p>}
-        </div>
-      ) : (
-        <button className="connect-google-button" onClick={() => { setAuthOpen(false); setServiceSettingsOpen(true) }}><Chrome size={18} /> Configure Google sign-in <Settings size={15} /></button>
-      )}
-      <div className="auth-socials demo-socials">
-        <button onClick={() => signIn({ name: 'Demo Student', email: 'student@demo.local' })}><Sparkles size={18} /> Demo account</button>
-        <button onClick={() => signIn({ name: 'Guest Learner', email: 'guest@demo.local' })}><span className="apple-glyph">●</span> Guest</button>
-      </div>
-      <p className="auth-note"><ShieldCheck size={15} /> Google IDs are verified with Google; demo accounts stay entirely in this browser.</p>
+
+      <div className="auth-trust"><ShieldCheck size={15} /><span>Passwords are salted and hashed on the server. Sessions use secure, HTTP-only cookies.</span></div>
+      <button className="auth-guest" onClick={() => setAuthOpen(false)}>
+        <Sparkles size={15} /> Continue as guest — save only on this device
+      </button>
     </Modal>
   )
 }
@@ -169,7 +184,7 @@ export function UpgradeModal() {
           <Sparkles className="upgrade-spark two" size={16} />
         </div>
         <div className="upgrade-content">
-          <Badge tone="purple">Solvely Unlimited</Badge>
+          <Badge tone="purple">WeSolve Unlimited</Badge>
           <h2>One plan. Every AI study tool.</h2>
           <p>Use unlimited step-by-step solutions, verified answers, flashcards, quizzes, mock exams, and live notes.</p>
           <div className="upgrade-checks">

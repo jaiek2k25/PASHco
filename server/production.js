@@ -110,7 +110,7 @@ const server = http.createServer((req, res) => {
 })
 
 server.listen(PORT, HOST, () => {
-  console.log(`PASHco is serving ${DIST}`)
+  console.log(`WeSolve is serving ${DIST}`)
   console.log(`Listening on http://${HOST}:${PORT}`)
   console.log(`NVIDIA AI proxy: ${process.env.NVIDIA_API_KEY ? 'server key configured' : 'waiting for a browser key'}`)
 })

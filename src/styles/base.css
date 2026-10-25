@@ -438,3 +438,15 @@ label { font-weight: 600; }
   .sync-chip { padding: 7px; }
   .sync-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* Fallback screen if the app ever fails to render */
+.crash-screen { min-height: 100vh; display: grid; place-items: center; background: #f7f8fc; padding: 24px; }
+.crash-card { width: min(520px, 100%); background: #fff; border: 1px solid #e4e7f2; border-radius: 18px; padding: 28px; box-shadow: 0 18px 48px rgba(24, 32, 72, 0.08); display: grid; gap: 10px; }
+.crash-mark { font-weight: 800; font-size: 20px; letter-spacing: -0.03em; color: #20232e; }
+.crash-mark span { color: #3155ff; }
+.crash-card h1 { margin: 4px 0 0; font-size: 22px; color: #20232e; }
+.crash-card p { margin: 0; color: #5c6272; font-size: 14px; }
+.crash-card pre { margin: 6px 0; padding: 10px 12px; background: #fff5f5; border: 1px solid #fecdca; border-radius: 10px; color: #b42318; font-size: 12px; white-space: pre-wrap; }
+.crash-actions { display: flex; gap: 10px; margin-top: 6px; }
+.crash-card button { border: 0; border-radius: 10px; padding: 10px 16px; font: inherit; font-weight: 600; background: #3155ff; color: #fff; cursor: pointer; }
+.crash-card button.crash-ghost { background: #eef1fb; color: #3155ff; }

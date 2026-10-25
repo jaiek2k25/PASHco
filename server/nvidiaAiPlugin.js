@@ -83,7 +83,7 @@ const TASK_CONFIG = {
   solve: {
     maxTokens: 3000,
     temperature: 0.2,
-    system: 'You are Solvely, an expert multi-subject tutor. Solve accurately, show clear steps, and verify the result. Return ONLY a single valid JSON object. Do not use markdown code fences.',
+    system: 'You are WeSolve, an expert multi-subject tutor. Solve accurately, show clear steps, and verify the result. Return ONLY a single valid JSON object. Do not use markdown code fences.',
     schema: `Return this exact JSON shape:
 {
   "subject": "string",

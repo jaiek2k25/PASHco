@@ -403,7 +403,7 @@ export default function Landing() {
 
         <section className="unlimited-section">
           <div className="container unlimited-card">
-            <div className="unlimited-copy"><Badge tone="light">SOLVELY UNLIMITED</Badge><h2>Every AI study tool you need in ONE subscription</h2><p>Unlimited homework help, powerful study tools, and stronger exam support covering your hardest classes.</p><Button size="lg" variant="light" iconRight={ArrowRight} onClick={() => goToWorkspace('/pricing')}>Start Free with Unlimited</Button></div>
+            <div className="unlimited-copy"><Badge tone="light">WESOLVE UNLIMITED</Badge><h2>Every AI study tool you need in ONE subscription</h2><p>Unlimited homework help, powerful study tools, and stronger exam support covering your hardest classes.</p><Button size="lg" variant="light" iconRight={ArrowRight} onClick={() => goToWorkspace('/pricing')}>Start Free with Unlimited</Button></div>
             <div className="unlimited-list">
               {['Exam prep with predictions, mocks, and study plans', 'AI study guides, flashcards, and quizzes', 'Unlimited step-by-step homework solutions', 'AI notes from every lecture', 'Available across Web, iOS, Android, and Chrome'].map((item) => <div key={item}><span><Check size={15} /></span>{item}</div>)}
             </div>

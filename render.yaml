@@ -1,0 +1,25 @@
+# Render Blueprint for WeSolve.
+# Render > New > Blueprint > pick this repo. Add the two secrets when prompted.
+# Requires a paid instance type for the persistent disk below.
+services:
+  - type: web
+    name: wesolve
+    runtime: node
+    plan: starter
+    buildCommand: npm ci --no-audit --no-fund && npm run build
+    startCommand: node server/production.js
+    healthCheckPath: /api/auth/me
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: WESOLVE_DATA_DIR
+        value: /var/data
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: WESOLVE_SESSION_SECRET
+        generateValue: true
+    disk:
+      name: wesolve-data
+      mountPath: /var/data
+      sizeGB: 1

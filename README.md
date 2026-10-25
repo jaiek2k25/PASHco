@@ -62,18 +62,24 @@ npm run lint      # ESLint
 
 ### Deploying
 
-The app needs a **Node process** so the `/api/ai` proxy and `/api/auth` account service can run.
+WeSolve is one Node service: it serves the built app, proxies AI calls to NVIDIA, and stores
+accounts plus synced workspaces in a data directory. It needs a **Node host with a persistent
+disk** — static hosts can serve the pages but not accounts or the AI proxy.
 
-1. Push this repository to GitHub.
-2. Create a Node web service on Vercel, Render, Railway, Fly.io, or any VPS.
-3. Build command: `npm install && npm run build`
-4. Start command: `npm start`
-5. Add the `NVIDIA_API_KEY` environment variable (plus optional model overrides) and mount a persistent volume for `server/data`.
-6. Set the service port to the platform’s `PORT` (the server already reads `process.env.PORT`).
+```bash
+npm ci && npm run build
+NVIDIA_API_KEY=nvapi-... WESOLVE_SESSION_SECRET=... WESOLVE_DATA_DIR=/data node server/production.js
+```
 
-Static hosts such as GitHub Pages or plain S3 cannot run the proxy. On those, the app still works with the deterministic local engine; the browser can also attempt a direct NVIDIA call with a BYOK key, but that depends on NVIDIA’s CORS policy and exposes the key to the browser.
+| Variable | Purpose |
+| --- | --- |
+| `NVIDIA_API_KEY` | Server-side AI key. Without it the local engines handle every feature. |
+| `WESOLVE_SESSION_SECRET` | Signs session cookies. Generated on first run if unset. |
+| `WESOLVE_DATA_DIR` | Where `accounts.json` and the session secret live. Use the mounted disk. |
 
-Accounts and workspace sync need the Node process (or a Node-compatible host) so `/api/auth` is available. On a purely static host the app still works in guest mode.
+Ready-made configs are in the repo: **`Dockerfile`** + **`fly.toml`** (Fly.io, 1 GB volume),
+**`render.yaml`** (Render blueprint), and a generic container path for Railway or a VPS.
+Full instructions, including the post-deploy checklist, are in **[DEPLOY.md](DEPLOY.md)**.
 
 ## NVIDIA AI setup
 

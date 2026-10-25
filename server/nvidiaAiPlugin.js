@@ -181,9 +181,16 @@ function buildMessages(task, payload) {
   ]
 }
 
-function createHandler(env) {
+export function createAiHandler(env = {}) {
   return async (req, res) => {
-    const path = new URL(req.url || '/', 'http://localhost').pathname.replace(/\/$/, '') || '/'
+    let path = new URL(req.url || '/', 'http://localhost').pathname.replace(/\/$/, '') || '/'
+    // Support both Connect-style mounts (path already stripped) and a raw
+    // Node server that forwards the full /api/ai/... URL.
+    const marker = '/api/ai'
+    const markerIndex = path.indexOf(marker)
+    if (markerIndex !== -1) {
+      path = path.slice(markerIndex + marker.length).replace(/\/$/, '') || '/'
+    }
 
     if (req.method === 'OPTIONS') {
       res.statusCode = 204
@@ -323,10 +330,10 @@ export function nvidiaAiPlugin(env = {}) {
   return {
     name: 'pashco-nvidia-ai-proxy',
     configureServer(server) {
-      server.middlewares.use('/api/ai', createHandler(env))
+      server.middlewares.use('/api/ai', createAiHandler(env))
     },
     configurePreviewServer(server) {
-      server.middlewares.use('/api/ai', createHandler(env))
+      server.middlewares.use('/api/ai', createAiHandler(env))
     },
   }
 }

@@ -43,9 +43,26 @@ Other commands:
 
 ```bash
 npm run build     # Production build
-npm run preview   # Preview the production build
+npm start         # Serve dist/ and /api/ai with the Node server
+npm run serve     # Build, then start the production server
+npm run preview   # Vite preview (AI proxy included)
 npm run lint      # ESLint
 ```
+
+### Deploying
+
+The app needs a **Node process** so the `/api/ai` proxy can keep the key server-side.
+
+1. Push this repository to GitHub.
+2. Create a Node web service on Vercel, Render, Railway, Fly.io, or any VPS.
+3. Build command: `npm install && npm run build`
+4. Start command: `npm start`
+5. Add the `NVIDIA_API_KEY` environment variable (plus optional model overrides and `VITE_GOOGLE_CLIENT_ID`).
+6. Set the service port to the platform’s `PORT` (the server already reads `process.env.PORT`).
+
+Static hosts such as GitHub Pages or plain S3 cannot run the proxy. On those, the app still works with the deterministic local engine; the browser can also attempt a direct NVIDIA call with a BYOK key, but that depends on NVIDIA’s CORS policy and exposes the key to the browser.
+
+For Google sign-in, add the deployed origin (for example `https://your-app.example.com`) and `http://localhost:3000` to **Authorized JavaScript origins** in the Google Cloud console for your OAuth client.
 
 ## NVIDIA AI + Google OAuth setup
 

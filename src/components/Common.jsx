@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertCircle, ArrowRight, Check, CheckCircle2, Crown, Eye, EyeOff, LoaderCircle, Lock, Mail, ShieldCheck, Sparkles, User, X } from 'lucide-react'
+import { AlertCircle, ArrowRight, Check, CheckCircle2, CloudOff, Crown, Eye, EyeOff, LoaderCircle, Lock, Mail, ShieldCheck, Sparkles, User, X } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 
 export function Button({ children, variant = 'primary', size = 'md', className = '', icon: Icon, iconRight: IconRight, ...props }) {
@@ -61,7 +61,8 @@ export function ToastHost() {
 }
 
 export function AuthModal() {
-  const { authOpen, setAuthOpen, signIn, signUp } = useApp()
+  const { authOpen, setAuthOpen, signIn, signUp, backend } = useApp()
+  const localOnly = backend.checked && !backend.available
   const [mode, setMode] = useState('signup')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -121,13 +122,22 @@ export function AuthModal() {
       open={authOpen}
       onClose={() => setAuthOpen(false)}
       title={mode === 'signup' ? 'Create your WeSolve account' : 'Welcome back'}
-      subtitle="Your solves, study sets, notes, and exam plans sync to this account."
+      subtitle={localOnly
+        ? 'This preview has no server, so your account lives in this browser — your work still survives reloads.'
+        : 'Your solves, study sets, notes, and exam plans sync to this account.'}
       width={470}
     >
       <div className="auth-tabs">
         <button className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>Create account</button>
         <button className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Log in</button>
       </div>
+
+      {localOnly && (
+        <div className="auth-note is-block" role="status">
+          <CloudOff size={16} />
+          <span>This preview has no WeSolve server, so your account and work stay in this browser. Deploy the Node server to sync across devices.</span>
+        </div>
+      )}
 
       {error && <div className="auth-error" role="alert"><AlertCircle size={16} /><span>{error}</span></div>}
 

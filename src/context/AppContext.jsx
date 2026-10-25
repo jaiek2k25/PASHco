@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { createId, generateStudyPack, sampleStudyMaterial } from '../lib/intelligence'
-import { authApi } from '../lib/authClient'
+import { accounts } from '../lib/accounts'
+import { getBackendState, probeBackend, subscribeBackend } from '../lib/backend'
 
 const STORAGE_KEY = 'wesolve-v1'
 const LEGACY_KEYS = ['pashco-solvely-recreation-v1', 'pashco-wesolve-recreation-v1']
@@ -98,13 +99,37 @@ export function AppProvider({ children }) {
     }
   }, [state])
 
+  // Detect whether this build has a server. Static hosting has no /api, so
+  // accounts stay on the device and AI needs a browser-usable provider.
+  const [backend, setBackend] = useState(() => {
+    const snapshot = getBackendState()
+    return { checked: snapshot.checked, available: snapshot.available, info: snapshot.info }
+  })
+
+  useEffect(() => {
+    let active = true
+    const unsubscribe = subscribeBackend((next) => {
+      if (!active) return
+      setBackend({ checked: next.checked, available: next.available, info: next.info })
+    })
+    probeBackend().then((snapshot) => {
+      if (!active) return
+      // A cached probe resolves without publishing, so copy the result here.
+      setBackend({ checked: snapshot.checked, available: snapshot.available, info: snapshot.info })
+    })
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     let timer = null
 
     async function restore() {
       try {
-        const data = await authApi.me()
+        const data = await accounts.me()
         if (cancelled) return
         if (!data.user) {
           setAuth({ status: 'anonymous', syncedAt: null, syncState: 'local', error: '' })
@@ -113,7 +138,7 @@ export function AppProvider({ children }) {
         }
 
         if (data.hasWorkspace) {
-          const saved = await authApi.getWorkspace()
+          const saved = await accounts.getWorkspace()
           if (cancelled) return
           if (saved.workspace) {
             const next = { ...normalizeState(saved.workspace), user: data.user }
@@ -150,7 +175,7 @@ export function AppProvider({ children }) {
     const timer = window.setTimeout(async () => {
       setAuth((current) => ({ ...current, syncState: 'saving' }))
       try {
-        const result = await authApi.saveWorkspace(payload)
+        const result = await accounts.saveWorkspace(payload)
         lastSyncedRef.current = serialized
         setAuth((current) => ({ ...current, syncState: 'synced', syncedAt: result.syncedAt, error: '' }))
       } catch (error) {
@@ -187,22 +212,26 @@ export function AppProvider({ children }) {
   }, [])
 
   const signUp = useCallback(async ({ name, email, password }) => {
-    const result = await authApi.register({ name, email, password })
+    const result = await accounts.register({ name, email, password })
     adoptAccount(result.user, null)
-    toast(`Welcome to WeSolve, ${result.user.name.split(' ')[0]}! Your workspace is now syncing.`)
+    toast(result.local
+      ? `Welcome to WeSolve, ${result.user.name.split(' ')[0]}! This preview stores your account on this device.`
+      : `Welcome to WeSolve, ${result.user.name.split(' ')[0]}! Your workspace is now syncing.`)
     return result.user
   }, [adoptAccount, toast])
 
   const signIn = useCallback(async ({ email, password }) => {
-    const result = await authApi.login({ email, password })
+    const result = await accounts.login({ email, password })
     adoptAccount(result.user, result.workspace)
-    toast(`Welcome back, ${result.user.name.split(' ')[0]}. Your workspace is synced.`)
+    toast(result.local
+      ? `Welcome back, ${result.user.name.split(' ')[0]}. Your saved work is loaded from this device.`
+      : `Welcome back, ${result.user.name.split(' ')[0]}. Your workspace is synced.`)
     return result.user
   }, [adoptAccount, toast])
 
   const signOut = useCallback(async () => {
     try {
-      await authApi.logout()
+      await accounts.logout()
     } catch {
       // Signing out locally is still safe if the network is unavailable.
     }
@@ -220,10 +249,12 @@ export function AppProvider({ children }) {
     try {
       setAuth((current) => ({ ...current, syncState: 'saving' }))
       const payload = workspacePayload(state)
-      const result = await authApi.saveWorkspace(payload)
+      const result = await accounts.saveWorkspace(payload)
       lastSyncedRef.current = JSON.stringify(payload)
       setAuth((current) => ({ ...current, syncState: 'synced', syncedAt: result.syncedAt, error: '' }))
-      toast('Workspace synced to your account.')
+      toast(result.local
+        ? 'Saved on this device. Cross-device sync needs the WeSolve server.'
+        : 'Workspace synced to your account.')
       return true
     } catch (error) {
       setAuth((current) => ({ ...current, syncState: 'error', error: error.message }))
@@ -234,19 +265,19 @@ export function AppProvider({ children }) {
 
   const updateProfile = useCallback(async ({ name }) => {
     if (auth.status !== 'authenticated') return null
-    const result = await authApi.updateProfile({ name })
+    const result = await accounts.updateProfile({ name })
     patch((current) => ({ ...current, user: { ...current.user, ...result.user } }))
     toast('Profile updated.')
     return result.user
   }, [auth.status, patch, toast])
 
   const changePassword = useCallback(async ({ currentPassword, nextPassword }) => {
-    await authApi.changePassword({ currentPassword, nextPassword })
-    toast('Password changed. Other sessions were signed out.')
+    await accounts.changePassword({ currentPassword, nextPassword })
+    toast('Password changed.')
   }, [toast])
 
   const deleteAccount = useCallback(async (password) => {
-    await authApi.deleteAccount(password)
+    await accounts.deleteAccount(password)
     lastSyncedRef.current = ''
     setState(starterState())
     setAuth({ status: 'anonymous', syncedAt: null, syncState: 'local', error: '' })
@@ -258,7 +289,7 @@ export function AppProvider({ children }) {
     setUpgradeOpen(false)
     toast(plan === 'pro' ? 'Pro is active for your account.' : 'Switched to the free plan.')
     if (auth.status === 'authenticated') {
-      authApi.updateProfile({ plan }).catch(() => {})
+      accounts.updateProfile({ plan }).catch(() => {})
     }
   }, [auth.status, patch, toast])
 
@@ -347,6 +378,9 @@ export function AppProvider({ children }) {
     currentPack,
     auth,
     isAuthenticated: auth.status === 'authenticated',
+    backend,
+    hasBackend: backend.available,
+    isStaticPreview: backend.checked && !backend.available,
     toasts,
     removeToast,
     toast,
@@ -382,7 +416,7 @@ export function AppProvider({ children }) {
     updateOnboarding,
     updateSettings,
     resetWorkspace,
-  }), [state, currentPack, auth, toasts, removeToast, toast, authOpen, upgradeOpen, serviceSettingsOpen, serviceSettingsVersion, refreshServiceSettings, mobileMenuOpen, signIn, signUp, signOut, syncNow, updateProfile, changePassword, deleteAccount, setPlan, canSolve, consumeSolve, addHistory, deleteHistory, clearHistory, saveStudySet, deleteStudySet, setCurrentPack, saveNote, saveResearch, saveExam, updateOnboarding, updateSettings, resetWorkspace])
+  }), [state, currentPack, auth, backend, toasts, removeToast, toast, authOpen, upgradeOpen, serviceSettingsOpen, serviceSettingsVersion, refreshServiceSettings, mobileMenuOpen, signIn, signUp, signOut, syncNow, updateProfile, changePassword, deleteAccount, setPlan, canSolve, consumeSolve, addHistory, deleteHistory, clearHistory, saveStudySet, deleteStudySet, setCurrentPack, saveNote, saveResearch, saveExam, updateOnboarding, updateSettings, resetWorkspace])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

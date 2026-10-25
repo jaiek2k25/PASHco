@@ -318,7 +318,7 @@ export default function Landing() {
                 <Button size="lg" variant="outline" icon={Play} onClick={() => navigate('/mobile')}>Get the app</Button>
               </div>
               <div className="hero-trust"><div className="avatar-stack"><span>A</span><span>M</span><span>J</span><span>S</span></div><div><div className="stars">★★★★★</div><small>4.8 average rating from students</small></div></div>
-              <div className="hero-ai-note"><span className="ai-orb"><Sparkles size={13} /></span><div><strong>Live NVIDIA AI</strong><small>Multi-model answers, image OCR, and study generation</small></div><button onClick={() => setServiceSettingsOpen(true)}>Connect your key <ArrowRight size={13} /></button></div>
+              <div className="hero-ai-note"><span className="ai-orb"><Sparkles size={13} /></span><div><strong>Live AI, your own key</strong><small>NVIDIA, OpenRouter, Groq, Gemini — multi-model answers with image OCR</small></div><button onClick={() => setServiceSettingsOpen(true)}>Connect your key <ArrowRight size={13} /></button></div>
             </div>
 
             <div className="hero-showcase">

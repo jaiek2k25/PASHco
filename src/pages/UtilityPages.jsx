@@ -72,7 +72,7 @@ export function AccountPage() {
   const {
     state, auth, isAuthenticated, setAuthOpen, signOut, setUpgradeOpen, updateOnboarding,
     updateSettings, resetWorkspace, toast, setServiceSettingsOpen, serviceSettingsVersion,
-    updateProfile, changePassword, deleteAccount, syncNow, setPlan,
+    updateProfile, changePassword, deleteAccount, syncNow, setPlan, backend,
   } = useApp()
   const [name, setName] = useState(state.user?.name || '')
   const [level, setLevel] = useState(state.onboarding.level || '')
@@ -100,8 +100,9 @@ export function AccountPage() {
   const initials = (state.user?.name || 'W').split(/\s+/).map((word) => word[0]).join('').slice(0, 2).toUpperCase()
   const joined = state.user?.joinedAt ? new Date(state.user.joinedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : ''
 
+  const localMode = backend.checked && !backend.available
   const syncLabel = {
-    synced: { text: 'Synced to account', tone: 'green' },
+    synced: localMode ? { text: 'Saved on this device', tone: 'green' } : { text: 'Synced to account', tone: 'green' },
     saving: { text: 'Saving changes…', tone: 'purple' },
     pending: { text: 'Changes queued', tone: 'purple' },
     error: { text: 'Sync needs attention', tone: 'gray' },
@@ -162,13 +163,17 @@ export function AccountPage() {
   return (
     <div className="app-page account-page">
       <ToolTabs />
-      <PageHeader eyebrow="ACCOUNT" title="Account & settings" description="Manage your WeSolve profile, synced workspace, and security." />
+      <PageHeader eyebrow="ACCOUNT" title="Account & settings" description={localMode
+        ? 'Manage your WeSolve profile and the work saved in this browser.'
+        : 'Manage your WeSolve profile, synced workspace, and security.'} />
 
       <div className="account-layout">
         <div className="account-main">
           <section className="account-card profile-card">
             <div className="account-card-head">
-              <div><h2>Profile</h2><p>{isAuthenticated ? 'This profile is stored in your WeSolve account.' : 'You are working as a guest on this device.'}</p></div>
+              <div><h2>Profile</h2><p>{isAuthenticated
+                ? localMode ? 'This profile is stored in this browser only.' : 'This profile is stored in your WeSolve account.'
+                : 'You are working as a guest on this device.'}</p></div>
               <span className="avatar large">{initials}</span>
             </div>
             {isAuthenticated ? (
@@ -184,8 +189,10 @@ export function AccountPage() {
             ) : (
               <div className="signed-out">
                 <UserRound size={24} />
-                <h3>Create an account to sync everything</h3>
-                <p>Right now your solves, study sets, and notes live only in this browser. An account keeps them on the server and available on any device.</p>
+                <h3>{localMode ? 'Create an account for this browser' : 'Create an account to sync everything'}</h3>
+                <p>{localMode
+                  ? 'Right now your solves, study sets, and notes live only in this browser. A preview account keeps them separate per profile here; deploy the WeSolve server to carry them across devices.'
+                  : 'Right now your solves, study sets, and notes live only in this browser. An account keeps them on the server and available on any device.'}</p>
                 <Button icon={ArrowRight} onClick={() => setAuthOpen(true)}>Create free account</Button>
               </div>
             )}
@@ -193,7 +200,9 @@ export function AccountPage() {
 
           <section className="account-card sync-card">
             <div className="account-card-head">
-              <div><h2>Workspace sync</h2><p>Your study data follows you across devices when you are signed in.</p></div>
+              <div><h2>Workspace sync</h2><p>{localMode
+                ? 'This preview keeps your work in this browser. Nothing is uploaded anywhere.'
+                : 'Your study data follows you across devices when you are signed in.'}</p></div>
               <Badge tone={syncLabel.tone}>{syncLabel.text}</Badge>
             </div>
             <div className="sync-grid">
@@ -206,8 +215,14 @@ export function AccountPage() {
             </div>
             {auth.error && <p className="sync-error">{auth.error}</p>}
             <div className="sync-actions">
-              <span>{auth.syncedAt ? `Last saved ${new Date(auth.syncedAt).toLocaleString()}` : isAuthenticated ? 'Waiting for the first sync…' : 'Sign in to enable cloud sync'}</span>
-              <Button variant="outline" size="sm" icon={RefreshCw} onClick={() => syncNow()}>{isAuthenticated ? 'Sync now' : 'Sign in to sync'}</Button>
+              <span>{auth.syncedAt
+                ? `Last saved ${new Date(auth.syncedAt).toLocaleString()}`
+                : isAuthenticated
+                  ? localMode ? 'Saved automatically in this browser' : 'Waiting for the first sync…'
+                  : localMode ? 'Sign in to keep profiles separate on this device' : 'Sign in to enable cloud sync'}</span>
+              <Button variant="outline" size="sm" icon={RefreshCw} onClick={() => syncNow()}>{isAuthenticated
+                ? localMode ? 'Save now' : 'Sync now'
+                : 'Sign in to sync'}</Button>
             </div>
           </section>
 
@@ -277,7 +292,7 @@ export function AccountPage() {
 
           <div className="side-card connection-card">
             <div className="side-card-head"><h3>Connected services</h3><Badge tone={aiStatus?.configured ? 'green' : 'gray'}>{aiStatus?.configured ? 'AI ON' : 'LOCAL'}</Badge></div>
-            <div className="connection-row"><span><KeyRound size={17} /></span><div><strong>NVIDIA Build</strong><small>{aiStatus?.configured ? `Connected · ${aiStatus.model}` : serviceSettings.nvidiaApiKey ? `Key saved ${maskKey(serviceSettings.nvidiaApiKey)}` : 'No API key connected'}</small></div></div>
+            <div className="connection-row"><span><KeyRound size={17} /></span><div><strong>{aiStatus?.staticHost ? 'Your provider' : 'NVIDIA Build'}</strong><small>{aiStatus?.configured ? `Connected · ${aiStatus.model}` : serviceSettings.nvidiaApiKey ? `Key saved ${maskKey(serviceSettings.nvidiaApiKey)}` : 'No API key connected'}</small></div></div>
             <div className="connection-row"><span><UserRound size={17} /></span><div><strong>WeSolve account</strong><small>{isAuthenticated ? state.user.email : 'Guest workspace'}</small></div></div>
             <Button variant="outline" size="sm" className="full-width" icon={Settings} onClick={() => setServiceSettingsOpen(true)}>Manage AI settings</Button>
           </div>

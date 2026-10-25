@@ -6,6 +6,7 @@ import {
   solveProblem,
 } from './intelligence'
 import { getServiceSettings } from './serviceSettings'
+import { getBackendState, markBackendMissing, probeBackend } from './backend'
 
 const MODEL_LABELS = ['NVIDIA reasoning', 'Symbolic verification', 'Context review']
 
@@ -27,6 +28,22 @@ let lastAiError = null
 
 export function getLastAiError() {
   return lastAiError
+}
+
+/** A short, human explanation of why the last AI request could not be used. */
+export function aiFallbackReason() {
+  if (!lastAiError) return 'No AI provider is connected.'
+  const messages = {
+    NO_API_KEY: 'No AI key is connected.',
+    INVALID_KEY: 'Your AI key was rejected by the provider.',
+    NO_INFERENCE_ACCESS: 'This key has no access to the model endpoint.',
+    RATE_LIMITED: 'The AI provider is rate limiting right now.',
+    UPSTREAM_RATE_LIMITED: 'The AI provider is rate limiting right now.',
+    BAD_BASE_URL: 'The API base URL is not valid.',
+    NETWORK_ERROR: 'The AI provider could not be reached.',
+    TIMEOUT: 'The AI provider took too long to answer.',
+  }
+  return messages[lastAiError.code] || lastAiError.message || 'The AI provider is unavailable.'
 }
 
 async function parseResponse(response) {
@@ -52,53 +69,163 @@ const DIRECT_PROMPTS = {
   exam: 'Predict likely exam topics from this material. Reply with ONLY JSON: {"predictedTopics":[{"topic","likelihood","mastery"}],"weakTopics":[],"reviewPlan":[{"day","topic","task","minutes"}]}. Include 6 topics and a 7-day plan.',
 }
 
+/** Sensible default models per provider, so nobody has to guess slugs. */
+const PROVIDER_DEFAULTS = [
+  { match: 'integrate.api.nvidia.com', base: 'https://integrate.api.nvidia.com/v1', text: 'meta/llama-3.3-70b-instruct', vision: 'meta/llama-3.2-11b-vision-instruct' },
+  { match: 'openrouter.ai', text: 'meta-llama/llama-3.3-70b-instruct', vision: 'meta-llama/llama-3.2-11b-vision-instruct' },
+  { match: 'api.groq.com', text: 'llama-3.3-70b-versatile', vision: 'meta-llama/llama-4-scout-17b-16e-instruct' },
+  { match: 'api.deepseek.com', text: 'deepseek-chat', vision: '' },
+  { match: 'generativelanguage.googleapis.com', text: 'gemini-2.0-flash', vision: 'gemini-2.0-flash' },
+  { match: 'api.openai.com', text: 'gpt-4o-mini', vision: 'gpt-4o-mini' },
+  { match: 'api.mistral.ai', text: 'mistral-large-latest', vision: 'pixtral-12b-2409' },
+  { match: 'api.together.xyz', text: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', vision: '' },
+]
+
+function providerFor(baseUrl) {
+  // An empty base URL means the built-in NVIDIA endpoint.
+  if (!baseUrl) return PROVIDER_DEFAULTS[0]
+  return PROVIDER_DEFAULTS.find((item) => baseUrl.includes(item.match)) || null
+}
+
+/**
+ * Providers known to refuse browser requests (no CORS headers). On the static
+ * build these only work through a proxy URL, so the UI says so up front.
+ */
+export function providerNeedsServer(baseUrl) {
+  if (!baseUrl) return true
+  return /integrate\.api\.nvidia\.com|api\.deepseek\.com|api\.together\.xyz/.test(baseUrl)
+}
+
+function providerLabel(baseUrl) {
+  const provider = providerFor(baseUrl)
+  if (!provider) return (() => {
+    try {
+      return new URL(baseUrl).host
+    } catch {
+      return 'the AI provider'
+    }
+  })()
+  return provider.match
+}
+
+function aiError(message, code, extra = {}) {
+  const error = new Error(message)
+  error.code = code
+  Object.assign(error, extra)
+  return error
+}
+
 async function directNvidiaRequest(task, payload, settings) {
   const isVision = task === 'ocr'
+  const provider = providerFor(settings.nvidiaBaseUrl)
+  const baseUrl = (settings.nvidiaBaseUrl || provider?.base || 'https://integrate.api.nvidia.com/v1').replace(/\/+$/, '')
+  const label = providerLabel(baseUrl)
   const model = isVision
-    ? settings.nvidiaVisionModel || 'meta/llama-3.2-11b-vision-instruct'
-    : settings.nvidiaModel || 'meta/llama-3.3-70b-instruct'
+    ? settings.nvidiaVisionModel || provider?.vision || ''
+    : settings.nvidiaModel || provider?.text || ''
+
+  if (!model) {
+    throw aiError(
+      `Add a model name for ${label} in the AI settings — this endpoint does not have a default.`,
+      'MODEL_REQUIRED',
+    )
+  }
+
   const content = isVision
     ? [
         { type: 'text', text: DIRECT_PROMPTS.ocr },
         { type: 'image_url', image_url: { url: payload?.image } },
       ]
     : `${DIRECT_PROMPTS[task]}\n\nDATA:\n${JSON.stringify(payload || {}).slice(0, 30000)}`
-  const baseUrl = (settings.nvidiaBaseUrl || 'https://integrate.api.nvidia.com/v1').replace(/\/+$/, '')
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${settings.nvidiaApiKey}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: 'You are WeSolve, an accurate study assistant. Return only valid JSON.' },
-        { role: 'user', content },
-      ],
-      temperature: 0.3,
-      top_p: 0.85,
-      max_tokens: 4096,
-      stream: false,
-    }),
-  })
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
+  const timer = controller ? setTimeout(() => controller.abort(), 90_000) : null
+  let response
+  try {
+    response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${settings.nvidiaApiKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      signal: controller?.signal,
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: 'You are WeSolve, an accurate study assistant. Return only valid JSON.' },
+          { role: 'user', content },
+        ],
+        temperature: 0.3,
+        top_p: 0.85,
+        max_tokens: 4096,
+        stream: false,
+      }),
+    })
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw aiError(`${label} did not answer within 90 seconds.`, 'TIMEOUT')
+    }
+    throw aiError(
+      `Your browser could not reach ${label}. Browsers can only call providers that allow cross-origin requests; use a provider that does (OpenRouter, Groq, Gemini) or a proxy URL.`,
+      'NETWORK_ERROR',
+    )
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
-    throw new Error(body.detail || body.message || `NVIDIA returned HTTP ${response.status}.`)
+    const detail = body?.error?.message || body?.detail || body?.message || ''
+    if (response.status === 401) {
+      throw aiError(detail || `${label} rejected this API key.`, 'INVALID_KEY', { status: 401 })
+    }
+    if (response.status === 403) {
+      throw aiError(detail || `This key has no access to ${model} on ${label}.`, 'NO_INFERENCE_ACCESS', { status: 403 })
+    }
+    if (response.status === 429) {
+      throw aiError(detail || `${label} is rate limiting requests. Wait a moment and try again.`, 'RATE_LIMITED', { status: 429 })
+    }
+    if (response.status === 404) {
+      throw aiError(detail || `${label} does not recognise the model “${model}”.`, 'BAD_MODEL', { status: 404 })
+    }
+    throw aiError(detail || `${label} returned HTTP ${response.status}.`, 'UPSTREAM_ERROR', { status: response.status })
   }
-  const result = await response.json()
+
+  const result = await response.json().catch(() => null)
   const text = result?.choices?.[0]?.message?.content
-  if (!text) throw new Error('NVIDIA returned an empty response.')
+  if (!text) throw aiError(`${label} returned an empty response.`, 'EMPTY_RESPONSE')
   const cleaned = String(text).replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
   const start = cleaned.indexOf('{')
   const end = cleaned.lastIndexOf('}')
-  if (start === -1 || end <= start) throw new Error('NVIDIA did not return JSON.')
-  return JSON.parse(cleaned.slice(start, end + 1))
+  if (start === -1 || end <= start) {
+    throw aiError(`${label} answered, but not in the JSON format WeSolve needs.`, 'BAD_FORMAT')
+  }
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1))
+  } catch {
+    throw aiError(`${label} answered with malformed JSON.`, 'BAD_FORMAT')
+  }
 }
 
 export async function getAiStatus() {
   const settings = getServiceSettings()
+  const backend = await probeBackend().catch(() => ({ available: false, checked: true }))
+  if (!backend.available) {
+    return {
+      configured: Boolean(settings.nvidiaApiKey),
+      keySource: settings.nvidiaApiKey ? 'browser' : 'none',
+      hint: '',
+      model: settings.nvidiaModel || 'provider default',
+      visionModel: settings.nvidiaVisionModel || '',
+      baseUrl: settings.nvidiaBaseUrl || '',
+      provider: settings.nvidiaBaseUrl || 'direct browser call',
+      signedIn: false,
+      accountKeySaved: false,
+      sharedKeyAvailable: false,
+      staticHost: true,
+    }
+  }
   const headers = {}
   if (settings.nvidiaApiKey) headers['x-ai-api-key'] = settings.nvidiaApiKey
   if (settings.nvidiaBaseUrl) headers['x-ai-base-url'] = settings.nvidiaBaseUrl
@@ -127,8 +254,13 @@ export async function requestAi(task, payload = {}, options = {}) {
   if (settings.nvidiaBaseUrl) headers['x-ai-base-url'] = settings.nvidiaBaseUrl
   const attempts = Math.max(1, options.retries ?? 3)
 
+  // On a static host there is no /api/ai to call: go straight to the provider
+  // with the user's own key instead of burning retries on a 404.
+  const knownBackend = getBackendState()
+  const backendMissing = knownBackend.checked ? !knownBackend.available : false
+
   let proxyError = null
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+  for (let attempt = 0; attempt < attempts && !backendMissing; attempt += 1) {
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
@@ -145,10 +277,13 @@ export async function requestAi(task, payload = {}, options = {}) {
       return result.data
     } catch (error) {
       proxyError = error
-      if (error.noKey) {
+      if (error.status === 404 || error.status === 405) markBackendMissing()
+      // A server with no key of its own is not fatal: this browser may hold one.
+      if (error.noKey && !settings.nvidiaApiKey) {
         lastAiError = error
         throw error
       }
+      if (error.noKey) break
       if (!isRetryable(error) || attempt === attempts - 1) break
       // Respect Retry-After, otherwise exponential backoff with jitter.
       const wait = error.retryAfter ? Math.min(error.retryAfter, 20) * 1000 : Math.round(600 * 2 ** attempt + Math.random() * 400)
@@ -165,14 +300,14 @@ export async function requestAi(task, payload = {}, options = {}) {
       lastAiError = null
       return data
     } catch (directError) {
-      lastAiError = proxyError
-      directError.message = `${proxyError.message} · ${directError.message}`
+      // The provider's own message is the most useful thing to show.
+      lastAiError = directError
       throw directError
     }
   }
 
-  lastAiError = proxyError
-  throw proxyError
+  lastAiError = proxyError || aiError('Connect your own API key to turn on live AI answers.', 'NO_API_KEY')
+  throw lastAiError
 }
 
 
@@ -254,7 +389,8 @@ export async function aiSolve(input, attachments = []) {
     })
     return normalizeSolution(data, fallback)
   } catch {
-    return fallback
+    // Keep the reason so the UI can explain why this is not AI output.
+    return { ...fallback, source: 'local', aiError: aiFallbackReason() }
   }
 }
 
@@ -326,7 +462,7 @@ export async function aiStudyPack(sourceText, title = 'My study set') {
     })
     return normalizeStudyPack(data, fallback, title, sourceText)
   } catch {
-    return fallback
+    return { ...fallback, source: fallback.source || 'local', aiError: aiFallbackReason() }
   }
 }
 
@@ -411,7 +547,7 @@ export async function aiResearch(topic, sources = [], targetWords = 700) {
       source: 'nvidia',
     }
   } catch {
-    return fallback
+    return { ...fallback, source: fallback.source || 'local', aiError: aiFallbackReason() }
   }
 }
 
@@ -430,10 +566,14 @@ export async function aiNotes(transcript, course = 'Untitled lecture') {
       source: 'nvidia',
     }
   } catch {
-    return fallback
+    return { ...fallback, source: fallback.source || 'local', aiError: aiFallbackReason() }
   }
 }
 
+/**
+ * Returns { answer, source, error }. `source: 'local'` means the caller must
+ * write the answer itself and label it — never pass it off as AI text.
+ */
 export async function aiTutorAnswer(question, context) {
   try {
     const data = await requestAi('tutor', {
@@ -444,9 +584,11 @@ export async function aiTutorAnswer(question, context) {
       finalAnswer: context?.finalAnswer || '',
       subject: context?.subject || '',
     })
-    return cleanString(data.answer || data.text, '')
+    const answer = cleanString(data.answer || data.text, '')
+    if (!answer) return { answer: '', source: 'local', error: 'The AI reply was empty.' }
+    return { answer, source: 'nvidia', error: '' }
   } catch {
-    return ''
+    return { answer: '', source: 'local', error: aiFallbackReason() }
   }
 }
 
@@ -600,6 +742,6 @@ export async function aiLesson(topic, material = '') {
     }, { maxTokens: 4000 })
     return normalizeLesson(data, fallback)
   } catch {
-    return fallback
+    return { ...fallback, source: fallback.source || 'local', aiError: aiFallbackReason() }
   }
 }

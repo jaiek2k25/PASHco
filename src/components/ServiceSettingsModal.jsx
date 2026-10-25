@@ -3,13 +3,23 @@ import { AlertTriangle, CheckCircle2, CloudCog, Eye, EyeOff, KeyRound, LoaderCir
 import { Badge, Button, Modal } from './Common'
 import { useApp } from '../context/AppContext'
 import { getAiStatus, requestAi } from '../lib/aiClient'
-import { authApi } from '../lib/authClient'
+import { accounts } from '../lib/accounts'
 import { getServiceSettings, maskKey, setServiceSettings } from '../lib/serviceSettings'
 
 const EMPTY = { nvidiaApiKey: '', nvidiaModel: '', nvidiaVisionModel: '', nvidiaBaseUrl: '' }
 
+// Hosts that accept requests straight from a browser (CORS enabled). On the
+// static build these are the only providers that can work without a server.
+const PRESETS = [
+  { id: 'nvidia', label: 'NVIDIA', base: '', model: 'meta/llama-3.3-70b-instruct', vision: 'meta/llama-3.2-11b-vision-instruct', browser: false },
+  { id: 'openrouter', label: 'OpenRouter', base: 'https://openrouter.ai/api/v1', model: 'meta-llama/llama-3.3-70b-instruct', vision: 'meta-llama/llama-3.2-11b-vision-instruct', browser: true },
+  { id: 'groq', label: 'Groq', base: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', vision: 'meta-llama/llama-4-scout-17b-16e-instruct', browser: true },
+  { id: 'gemini', label: 'Google Gemini', base: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.0-flash', vision: 'gemini-2.0-flash', browser: true },
+  { id: 'deepseek', label: 'DeepSeek', base: 'https://api.deepseek.com/v1', model: 'deepseek-chat', vision: '', browser: false },
+]
+
 export default function ServiceSettingsModal() {
-  const { serviceSettingsOpen, setServiceSettingsOpen, serviceSettingsVersion, refreshServiceSettings, isAuthenticated, setAuthOpen, toast } = useApp()
+  const { serviceSettingsOpen, setServiceSettingsOpen, serviceSettingsVersion, refreshServiceSettings, isAuthenticated, setAuthOpen, toast, hasBackend } = useApp()
   const [settings, setSettings] = useState(getServiceSettings)
   const [showKey, setShowKey] = useState(false)
   const [status, setStatus] = useState(null)
@@ -23,7 +33,7 @@ export default function ServiceSettingsModal() {
       return
     }
     try {
-      const result = await authApi.getAiKey()
+      const result = await accounts.getAiKey()
       setAccountKey(result.aiKey)
     } catch {
       setAccountKey(null)
@@ -67,9 +77,23 @@ export default function ServiceSettingsModal() {
 
     setBusy(true)
     try {
+      if (staticHost) {
+        // No server: the key stays in this browser, which is the only option.
+        const result = await accounts.saveAiKey({
+          ...(cleaned.nvidiaApiKey ? { key: cleaned.nvidiaApiKey } : {}),
+          baseUrl: cleaned.nvidiaBaseUrl,
+          model: cleaned.nvidiaModel,
+          visionModel: cleaned.nvidiaVisionModel,
+        })
+        setAccountKey(result.aiKey)
+        refreshServiceSettings()
+        toast('Key saved in this browser.')
+        setServiceSettingsOpen(false)
+        return
+      }
       // Personal key lives on the account, encrypted at rest. Keep this browser
       // free of it so a shared machine cannot read it later.
-      const result = await authApi.saveAiKey({
+      const result = await accounts.saveAiKey({
         ...(cleaned.nvidiaApiKey ? { key: cleaned.nvidiaApiKey } : {}),
         baseUrl: cleaned.nvidiaBaseUrl,
         model: cleaned.nvidiaModel,
@@ -92,7 +116,7 @@ export default function ServiceSettingsModal() {
     setBusy(true)
     try {
       if (isAuthenticated) {
-        const result = await authApi.clearAiKey()
+        const result = await accounts.clearAiKey()
         setAccountKey(result.aiKey)
       }
       setServiceSettings({ ...EMPTY })
@@ -132,6 +156,7 @@ export default function ServiceSettingsModal() {
   }
 
   const savedOnAccount = Boolean(accountKey?.configured)
+  const staticHost = !hasBackend
   const hasLocalKey = Boolean(settings.nvidiaApiKey)
   const ready = Boolean(status?.configured)
   const providerHost = (() => {
@@ -164,10 +189,12 @@ export default function ServiceSettingsModal() {
           <Badge tone={ready ? 'green' : 'gray'}>{ready ? 'READY' : 'LOCAL MODE'}</Badge>
         </div>
 
-        <div className={`service-owner ${isAuthenticated ? 'is-account' : 'is-guest'}`}>
-          {isAuthenticated
-            ? <><CloudCog size={18} /><div><strong>Saved to your account</strong><p>Encrypted on the server, so it follows you to every device you sign in on.</p></div></>
-            : <><UserRound size={18} /><div><strong>This browser only</strong><p>Sign in to keep your key across devices. <button type="button" className="link-button" onClick={() => { setServiceSettingsOpen(false); setAuthOpen(true) }}>Create an account</button></p></div></>}
+        <div className={`service-owner ${isAuthenticated && !staticHost ? 'is-account' : 'is-guest'}`}>
+          {staticHost
+            ? <><UserRound size={18} /><div><strong>Saved in this browser</strong><p>There is no WeSolve server on this build, so the key cannot be stored on an account.</p></div></>
+            : isAuthenticated
+              ? <><CloudCog size={18} /><div><strong>Saved to your account</strong><p>Encrypted on the server, so it follows you to every device you sign in on.</p></div></>
+              : <><UserRound size={18} /><div><strong>This browser only</strong><p>Sign in to keep your key across devices. <button type="button" className="link-button" onClick={() => { setServiceSettingsOpen(false); setAuthOpen(true) }}>Create an account</button></p></div></>}
         </div>
 
         <div className="service-section">
@@ -187,11 +214,36 @@ export default function ServiceSettingsModal() {
             <label className="field-label"><span>Text model <small>optional</small></span><input value={settings.nvidiaModel} onChange={(event) => setSettings((item) => ({ ...item, nvidiaModel: event.target.value }))} placeholder="meta/llama-3.3-70b-instruct" /></label>
             <label className="field-label"><span>Vision / OCR model <small>optional</small></span><input value={settings.nvidiaVisionModel} onChange={(event) => setSettings((item) => ({ ...item, nvidiaVisionModel: event.target.value }))} placeholder="meta/llama-3.2-11b-vision-instruct" /></label>
           </div>
+          <div className="provider-presets">
+            <span>Quick set-up</span>
+            {PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className={((settings.nvidiaBaseUrl || '') === preset.base) ? 'is-active' : ''}
+                onClick={() => setSettings((item) => ({
+                  ...item,
+                  nvidiaBaseUrl: preset.base,
+                  nvidiaModel: preset.model,
+                  nvidiaVisionModel: preset.vision,
+                }))}
+              >
+                {preset.label}
+                {staticHost && !preset.browser && <small>server</small>}
+                {staticHost && preset.browser && <small className="ok">browser-ready</small>}
+              </button>
+            ))}
+          </div>
+
           <label className="field-label"><span>API base URL <small>optional · OpenAI-compatible</small></span><input value={settings.nvidiaBaseUrl} onChange={(event) => setSettings((item) => ({ ...item, nvidiaBaseUrl: event.target.value }))} placeholder="https://integrate.api.nvidia.com/v1" /></label>
-          <p className="modal-hint">DeepSeek, Groq, OpenRouter, Together, or any OpenAI-compatible endpoint works. Leave it empty to use NVIDIA.</p>
+          <p className="modal-hint">Any OpenAI-compatible endpoint works — including your own proxy URL. Leave it empty to use NVIDIA from the WeSolve server.</p>
 
           <Button variant="outline" size="sm" icon={testing ? LoaderCircle : RefreshCw} onClick={test} disabled={testing || busy || (!hasLocalKey && !savedOnAccount)}>{testing ? 'Testing…' : 'Test connection'}</Button>
         </div>
+
+        {!hasBackend && (
+          <div className="service-warning"><AlertTriangle size={18} /><p><strong>Preview build, no server.</strong> Your key is saved in this browser and sent straight to the provider. Many providers block browser requests (CORS), so this only works with one that allows them — NVIDIA and most others need the Node deployment.</p></div>
+        )}
 
         <div className="service-warning"><AlertTriangle size={18} /><p><strong>Your key, your bill.</strong> Requests are billed to the key you connect here, so other people using WeSolve never spend your credits. Keys are encrypted at rest and never sent back to the browser. Never commit a key to GitHub.</p></div>
       </div>

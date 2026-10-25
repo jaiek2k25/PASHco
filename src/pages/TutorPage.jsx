@@ -8,7 +8,7 @@ import ToolTabs from '../components/ToolTabs'
 import { Badge, Button, Modal, ProgressBar } from '../components/Common'
 import { useApp } from '../context/AppContext'
 import { createId, downloadText, safeFileName, tutorLessons, tutorWhiteboards } from '../lib/intelligence'
-import { aiLesson, aiTutorAnswer, readImageText } from '../lib/aiClient'
+import { aiFallbackReason, aiLesson, aiTutorAnswer, readImageText } from '../lib/aiClient'
 import { extractDocumentText } from '../lib/fileExtract'
 
 const BOARD_W = 1000
@@ -549,14 +549,17 @@ export default function TutorPage() {
     const id = createId('chat')
     setChat((items) => [...items, { id, question: text, answer: 'Thinking…', pending: true }])
     setAsking(true)
-    const aiAnswer = await aiTutorAnswer(text, {
+    const reply = await aiTutorAnswer(text, {
       lesson: lesson.title,
       step: `Step ${step + 1}: ${currentStep.board}`,
       board: content.lines.join(' · '),
       subject: lesson.subject,
     })
-    const answer = aiAnswer || buildLocalTutorAnswer(text, lesson, currentStep, content)
-    setChat((items) => items.map((item) => item.id === id ? { ...item, answer, pending: false } : item))
+    const local = reply.source !== 'nvidia'
+    const answer = local ? buildLocalTutorAnswer(text, lesson, currentStep, content) : reply.answer
+    setChat((items) => items.map((item) => item.id === id
+      ? { ...item, answer, pending: false, offline: local, offlineReason: local ? reply.error : '' }
+      : item))
     setAsking(false)
   }
 
@@ -622,7 +625,10 @@ export default function TutorPage() {
     setCreateTopic('')
     setCreateMaterial('')
     setCreating(false)
-    toast(newLesson.source === 'nvidia' ? 'Your whiteboard lesson is ready.' : 'Lesson created with the local engine.')
+    toast(newLesson.source === 'nvidia'
+      ? 'Your whiteboard lesson is ready.'
+      : `Lesson written by the built-in engine. ${aiFallbackReason()}`,
+    newLesson.source === 'nvidia' ? 'success' : 'error')
   }
 
   const readMaterialFile = async (file) => {
@@ -927,7 +933,7 @@ export default function TutorPage() {
                     <div className="wb-chat-item" key={item.id}>
                       <div className="wb-chat-q"><strong>You</strong><p>{item.question}</p></div>
                       <div className={`wb-chat-a ${item.pending ? 'pending' : ''}`}>
-                        <span><Sparkles size={13} /> WeSolve Tutor</span>
+                        <span><Sparkles size={13} /> WeSolve Tutor {item.offline && <em className="chat-offline" title={item.offlineReason}>offline engine</em>}</span>
                         <p>{item.answer}</p>
                         {item.pending && <LoaderCircle size={14} className="spin" />}
                       </div>
@@ -999,7 +1005,7 @@ export default function TutorPage() {
                 : 'Upload a PDF, Word, PowerPoint, Excel, TXT, or image'}</span>
             <input type="file" accept=".pdf,.docx,.pptx,.xlsx,.txt,.md,.markdown,.csv,.tsv,.json,.html,.htm,.rtf,.tex,image/*" onChange={(event) => { readMaterialFile(event.target.files?.[0]); event.target.value = '' }} />
           </label>
-          <p className="modal-hint">With an NVIDIA key connected, the lesson is written by AI. Without one, the local engine builds the board from your question.</p>
+          <p className="modal-hint">With an AI key connected, the lesson is written by AI. Without one, the built-in engine builds the board from your question — and the lesson is labelled that way.</p>
         </div>
       </Modal>
 
@@ -1019,7 +1025,7 @@ export default function TutorPage() {
             <div key={title}><span>{icon}</span><div><strong>{title}</strong><p>{body}</p></div></div>
           ))}
         </div>
-        <p className="modal-hint">Tip: connect an NVIDIA key to have the tutor answer questions with live AI.</p>
+        <p className="modal-hint">Tip: connect your own AI key to have the tutor answer questions with live AI.</p>
       </Modal>
     </div>
   )

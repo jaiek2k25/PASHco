@@ -6,7 +6,7 @@ import PageHeader from '../components/PageHeader'
 import { Badge, Button, EmptyState } from '../components/Common'
 import { useApp } from '../context/AppContext'
 import { createId, downloadText, generateStudyPack, safeFileName, wordCount } from '../lib/intelligence'
-import { aiNotes } from '../lib/aiClient'
+import { aiFallbackReason, aiNotes } from '../lib/aiClient'
 
 function formatTime(seconds) {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
@@ -105,7 +105,10 @@ export default function NotesPage() {
     saveNote(summary)
     setActiveTab('notes')
     setGeneratingNotes(false)
-    toast(summary.source === 'nvidia' ? 'Notes generated with NVIDIA AI and saved.' : 'AI notes generated and saved.')
+    toast(summary.source === 'nvidia'
+      ? 'Notes generated with AI and saved.'
+      : `Notes built by the offline engine. ${aiFallbackReason()}`,
+    summary.source === 'nvidia' ? 'success' : 'error')
   }
 
   const createStudySet = (destination) => {

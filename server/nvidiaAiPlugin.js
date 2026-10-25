@@ -312,6 +312,20 @@ export function createAiHandler(env = {}) {
       return
     }
 
+    // Lets the front-end know it is talking to a real server before it offers
+    // sign-in or account key storage.
+    if (req.method === 'GET' && path === '/health') {
+      sendJson(res, 200, {
+        ok: true,
+        service: 'wesolve',
+        ai: true,
+        accounts: true,
+        sharedKey: sharedKeyEnabled(),
+        time: new Date().toISOString(),
+      })
+      return
+    }
+
     if (req.method === 'GET' && (path === '/status' || path === '/')) {
       const { key, source, account, user, sharedAvailable } = resolveCredentials(req, env)
       sendJson(res, 200, {

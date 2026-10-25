@@ -12,7 +12,28 @@ async function call(path, { method = 'GET', body, signal } = {}) {
     body: body === undefined ? undefined : JSON.stringify(body),
   })
 
-  const data = await response.json().catch(() => ({}))
+  // A static host answers unknown paths with its HTML page, which is not an
+  // account error — flag it so the caller can fall back to device-local mode.
+  const contentType = response.headers.get('content-type') || ''
+  const looksHtml = contentType.includes('text/html')
+  if (looksHtml) {
+    const error = new Error('No WeSolve server answered this request.')
+    error.status = 404
+    error.code = 'NO_BACKEND'
+    throw error
+  }
+
+  let data = {}
+  try {
+    data = await response.json()
+  } catch {
+    if (!response.ok) {
+      const error = new Error(`The server returned an unreadable reply (${response.status}).`)
+      error.status = response.status
+      throw error
+    }
+  }
+
   if (!response.ok) {
     const error = new Error(data.error || `Request failed (${response.status}).`)
     error.status = response.status

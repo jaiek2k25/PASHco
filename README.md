@@ -185,3 +185,20 @@ Demo Pro activation, app-store buttons, and extension install actions remain sim
 ## Branding
 
 The product is branded **WeSolve** (`wesolve.ai`). Brand marks live in `src/components/Brand.jsx` and `public/favicon.svg`; page titles live in `src/App.jsx` (`PAGE_TITLES`). User state is stored under `wesolve-v1` in local storage and, for signed-in users, in the account database.
+
+## What works where
+
+| Feature | Node server (`npm start`) | GitHub Pages (`site/`) |
+| --- | --- | --- |
+| Solver, whiteboard, flashcards, quizzes, study guide, exam planner | Yes | Yes |
+| AI answers | Server call with your key (any OpenAI-compatible provider) | Direct browser call to your key — use a provider that allows CORS (OpenRouter, Groq, Gemini) or a proxy URL |
+| Accounts | Email + password, hashed, session cookie, work synced to the account | Device-local profiles (PBKDF2-hashed password, work saved per profile in this browser) |
+| Offline answers | Labelled `OFFLINE ENGINE` with the reason | Same |
+
+Nothing is ever shown as AI output unless a provider actually answered. When the
+built-in engine answers, the app says so with a toast and a badge, and the
+reason (no key, rejected key, CORS block, provider error) is included.
+
+See [`DEPLOY.md`](DEPLOY.md) for hosting and
+[`deploy/ai-proxy/README.md`](deploy/ai-proxy/README.md) for making an NVIDIA key
+work on the static build.

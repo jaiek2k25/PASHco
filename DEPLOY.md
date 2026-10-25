@@ -119,3 +119,18 @@ is present, and the browser will not send them over plain HTTP.
 - Static-only hosting (no accounts, no AI proxy)
 - Serverless/edge functions (accounts live on a disk)
 - Multiple replicas without shared storage — `accounts.json` is a single-writer file
+
+## Making AI work on the static (Pages) build
+
+Pages serves files only, so `/api/ai` does not exist and browsers cannot call
+NVIDIA directly (no CORS). Two supported ways to get real AI answers there:
+
+| Path | What you do | Result |
+| --- | --- | --- |
+| Browser-ready provider | Connect AI → Quick set-up → OpenRouter / Groq / Gemini → paste key → Test | Works immediately, key stays in the browser |
+| Your own proxy | `npx wrangler deploy deploy/ai-proxy/worker.js --name wesolve-ai`, then set API base URL to `https://wesolve-ai.<you>.workers.dev/v1` | NVIDIA keys work; worker stores nothing |
+
+Accounts on the Pages build are stored per browser (PBKDF2-hashed password,
+work kept in local storage). Sign-in on the Node build is what syncs accounts
+across devices. See [`deploy/ai-proxy/README.md`](deploy/ai-proxy/README.md).
+

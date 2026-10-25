@@ -630,6 +630,7 @@ export function solveProblem(input, attachments = []) {
     question,
     attachments,
     ...result,
+    source: 'local',
     checks,
     followups: [
       'Explain this in simpler words',

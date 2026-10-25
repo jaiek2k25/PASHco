@@ -145,7 +145,7 @@ export default function WorkspaceLayout() {
             </button>
             <button className="icon-button" aria-label="Help" onClick={() => toast('Tip: try a sample question from the Solver home.')}><CircleHelp size={19} /></button>
             <button className="icon-button notification-button" aria-label="Notifications" onClick={() => toast('You are all caught up!')}><Bell size={19} /><span /></button>
-            <button className={`ai-status-button ${aiStatus?.configured ? 'connected' : ''}`} onClick={() => setServiceSettingsOpen(true)} title={aiStatus?.configured ? `NVIDIA AI connected (${aiStatus.model})` : 'Connect NVIDIA AI'}><span className="ai-status-dot" /><KeyRound size={16} /><span className="ai-status-label">{aiStatus?.configured ? 'AI on' : 'Connect AI'}</span></button>
+            <button className={`ai-status-button ${aiStatus?.configured ? 'connected' : ''}`} onClick={() => setServiceSettingsOpen(true)} title={aiStatus?.configured ? `AI connected (${aiStatus.model})` : 'Connect your AI key'}><span className="ai-status-dot" /><KeyRound size={16} /><span className="ai-status-label">{aiStatus?.configured ? 'AI on' : 'Connect AI'}</span></button>
             {state.plan === 'free' && <Button size="sm" className="hide-mobile" icon={Crown} onClick={() => setUpgradeOpen(true)}>Upgrade</Button>}
             <div className="profile-wrap">
               <button className="profile-button" onClick={() => setProfileOpen((open) => !open)} aria-label="Open profile menu">

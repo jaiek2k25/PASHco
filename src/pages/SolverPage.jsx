@@ -8,10 +8,68 @@ import { Badge, Button, Modal, Segmented } from '../components/Common'
 import { useApp } from '../context/AppContext'
 import { createFollowupAnswer, createId, sampleProblems, truncate, wordCount } from '../lib/intelligence'
 import { extractDocumentText } from '../lib/fileExtract'
-import { aiOcr, aiSolve, aiTutorAnswer, blobUrlToDataUrl, getLastAiError } from '../lib/aiClient'
-import { getServiceSettings } from '../lib/serviceSettings'
+import { aiFallbackReason, aiOcr, aiSolve, aiTutorAnswer, blobUrlToDataUrl, providerNeedsServer } from '../lib/aiClient'
+import { getServiceSettings, maskKey } from '../lib/serviceSettings'
 
-const hasAiKey = () => Boolean(getServiceSettings().nvidiaApiKey)
+
+
+/**
+ * One honest line above the composer: is live AI available for this request,
+ * and if not, exactly why? This is what stops a local draft from looking like
+ * an AI answer.
+ */
+function AiModeBanner({ version, hasBackend, isStaticPreview, onOpenSettings }) {
+  const settings = useMemo(() => getServiceSettings(), [version])
+  const hasKey = Boolean(settings.nvidiaApiKey)
+  const provider = (() => {
+    const value = settings.nvidiaBaseUrl
+    if (!value) return 'NVIDIA'
+    try {
+      return new URL(value).host
+    } catch {
+      return 'custom provider'
+    }
+  })()
+
+  // A key alone is not a working connection on the static build: this provider
+  // may refuse browser requests. Say which case we are in before the user asks.
+  const blockedHere = isStaticPreview && providerNeedsServer(settings.nvidiaBaseUrl)
+
+  if (hasKey && blockedHere) {
+    return (
+      <div className="ai-mode ai-mode-warn-row">
+        <span className="ai-mode-dot" />
+        <strong>Key saved, but this provider blocks browsers</strong>
+        <span>{provider} refuses cross-origin requests, so answers will come from the offline engine. Use a proxy URL or pick OpenRouter, Groq, or Gemini.</span>
+        <button type="button" onClick={onOpenSettings}>Fix</button>
+      </div>
+    )
+  }
+
+  if (hasKey) {
+    return (
+      <div className="ai-mode ai-mode-on">
+        <span className="ai-mode-dot" />
+        <strong>Live AI on</strong>
+        <span>{provider} · key {maskKey(settings.nvidiaApiKey)}</span>
+        <button type="button" onClick={onOpenSettings}>Change</button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="ai-mode ai-mode-off">
+      <span className="ai-mode-dot" />
+      <strong>Offline engine</strong>
+      <span>
+        {hasBackend
+          ? 'No AI key connected, so answers come from the built-in solver.'
+          : 'This preview has no server and no AI key, so answers are written by the built-in solver.'}
+      </span>
+      <button type="button" onClick={onOpenSettings}>Connect AI</button>
+    </div>
+  )
+}
 
 const EXAMPLE_ICONS = { Geometry: Sigma, Algebra: BarChart3, Chemistry: FlaskConical, Accounting: TableProperties }
 const MODEL_LABELS = [
@@ -141,7 +199,17 @@ function AnswerSkeleton() {
 export default function SolverPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { state, canSolve, consumeSolve, setUpgradeOpen, toast } = useApp()
+  const {
+    state,
+    canSolve,
+    consumeSolve,
+    setUpgradeOpen,
+    toast,
+    serviceSettingsVersion,
+    setServiceSettingsOpen,
+    hasBackend,
+    isStaticPreview,
+  } = useApp()
   const [input, setInput] = useState('')
   const [mode, setMode] = useState('solve')
   const [result, setResult] = useState(null)
@@ -211,9 +279,10 @@ export default function SolverPage() {
     consumeSolve(solution)
     setLoading(false)
     if (solution.source === 'nvidia') {
-      toast('Answer generated with NVIDIA AI.')
-    } else if (hasAiKey()) {
-      toast(`NVIDIA AI is unreachable, so the local engine answered. ${getLastAiError()?.message || ''}`.trim(), 'error')
+      toast('Answer generated with AI.')
+    } else {
+      // Never let a local answer masquerade as AI output.
+      toast(`Answered offline by the built-in engine. ${aiFallbackReason()}`, 'error')
     }
     window.setTimeout(() => document.querySelector('.solution-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80)
   }
@@ -278,10 +347,14 @@ export default function SolverPage() {
       if (text) {
         attachment.textContent = text
         setInput((current) => `${current}${current ? '\n\n' : ''}${text}`.slice(0, 12000))
-        toast('Image text extracted with NVIDIA vision AI.')
+        toast('Image text read by AI vision.')
+      } else {
+        // Not every model can see images. Say so instead of pretending the
+        // photo was understood.
+        toast(`Could not read this image. ${aiFallbackReason()}`, 'error')
       }
-    } catch {
-      // OCR remains optional; the local solver can still use typed text.
+    } catch (error) {
+      toast(error.message || 'Could not read this image.', 'error')
     }
   }
 
@@ -325,15 +398,18 @@ export default function SolverPage() {
     if (!question || !result) return
     setChatInput('')
     const pendingId = createId('chat')
-    setChat((items) => [...items, { id: pendingId, question, answer: 'Thinking with NVIDIA AI…', pending: true }])
-    const aiAnswer = await aiTutorAnswer(question, {
+    setChat((items) => [...items, { id: pendingId, question, answer: 'Writing an answer…', pending: true }])
+    const reply = await aiTutorAnswer(question, {
       lesson: result.subject,
       finalAnswer: result.finalAnswer,
       subject: result.subject,
       board: result.steps.map((step) => step.title).join(' → '),
     })
-    const answer = aiAnswer || createFollowupAnswer(question, result)
-    setChat((items) => items.map((item) => item.id === pendingId ? { ...item, answer, pending: false } : item))
+    const local = reply.source !== 'nvidia'
+    const answer = local ? createFollowupAnswer(question, result) : reply.answer
+    setChat((items) => items.map((item) => item.id === pendingId
+      ? { ...item, answer, pending: false, offline: local, offlineReason: local ? reply.error : '' }
+      : item))
   }
 
   const copySolution = async () => {
@@ -373,6 +449,13 @@ export default function SolverPage() {
     <div className="solver-page app-page">
       <ToolTabs />
       <input ref={fileRef} type="file" hidden multiple accept={accepted} onChange={(event) => { addFiles(event.target.files, uploadKind === 'images'); event.target.value = '' }} />
+
+      <AiModeBanner
+        version={serviceSettingsVersion}
+        hasBackend={hasBackend}
+        isStaticPreview={isStaticPreview}
+        onOpenSettings={() => setServiceSettingsOpen(true)}
+      />
 
       {!result && !loading && (
         <div className="solver-home">
@@ -482,7 +565,9 @@ export default function SolverPage() {
         <div className="solution-layout">
           <div className="solution-panel">
             <div className="solution-topbar">
-              <div className="solution-question"><span className="solution-avatar"><Sparkles size={17} /></span><div><small>Your question · {result.subject} {result.source === 'nvidia' && <Badge tone="green" className="inline-badge">NVIDIA AI</Badge>}</small><h2>{result.question}</h2></div></div>
+              <div className="solution-question"><span className="solution-avatar"><Sparkles size={17} /></span><div><small>Your question · {result.subject} {result.source === 'nvidia'
+                  ? <Badge tone="green" className="inline-badge">AI</Badge>
+                  : <Badge tone="gray" className="inline-badge">OFFLINE ENGINE</Badge>}</small><h2>{result.question}</h2></div></div>
               <div className="solution-actions"><Button variant="ghost" size="sm" icon={Plus} onClick={reset}>New question</Button><button className="icon-button" onClick={copySolution} title="Copy solution">{copied ? <Check size={18} /> : <Copy size={18} />}</button></div>
             </div>
 
@@ -539,7 +624,7 @@ export default function SolverPage() {
             <div className="followups">
               <div className="section-label"><span><Sparkles size={15} /> Recommended follow-ups</span></div>
               <div className="followup-suggestions">{result.followups.map((followup) => <button key={followup} onClick={() => askFollowup(followup)}>{followup}<ChevronRight size={15} /></button>)}</div>
-              {chat.map((message) => <div className="chat-thread" key={message.id}><div className="chat-user"><span>You</span><p>{message.question}</p></div><div className={`chat-ai ${message.pending ? 'pending-answer' : ''}`}><span><Sparkles size={13} /> WeSolve</span><p>{message.answer}</p><button onClick={() => { if (window.speechSynthesis) { const utterance = new SpeechSynthesisUtterance(message.answer); window.speechSynthesis.speak(utterance) } }}><Volume2 size={14} /> Read aloud</button></div></div>)}
+              {chat.map((message) => <div className="chat-thread" key={message.id}><div className="chat-user"><span>You</span><p>{message.question}</p></div><div className={`chat-ai ${message.pending ? 'pending-answer' : ''}`}><span><Sparkles size={13} /> WeSolve {message.offline && <em className="chat-offline" title={message.offlineReason}>offline engine</em>}</span><p>{message.answer}</p><button onClick={() => { if (window.speechSynthesis) { const utterance = new SpeechSynthesisUtterance(message.answer); window.speechSynthesis.speak(utterance) } }}><Volume2 size={14} /> Read aloud</button></div></div>)}
               <form className="followup-input" onSubmit={(event) => { event.preventDefault(); askFollowup() }}><button type="button" onClick={() => toast('Attachments are available on the new question screen.')}><Plus size={18} /></button><input value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="Ask follow-up…" /><button type="submit" aria-label="Send follow-up"><Send size={17} /></button></form>
             </div>
           </div>

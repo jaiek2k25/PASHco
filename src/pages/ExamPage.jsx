@@ -7,7 +7,7 @@ import SourceModal from '../components/SourceModal'
 import { Badge, Button, Modal, ProgressBar } from '../components/Common'
 import { useApp } from '../context/AppContext'
 import { createId, downloadText, estimateScore, getDemoExamQuestions, safeFileName, truncate } from '../lib/intelligence'
-import { aiExamPrediction } from '../lib/aiClient'
+import { aiExamPrediction, aiFallbackReason } from '../lib/aiClient'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
@@ -106,9 +106,9 @@ export default function ExamPage() {
     if (prediction) {
       setAiPrediction(prediction)
       setTab('topics')
-      toast('NVIDIA AI predicted your likely exam topics.')
+      toast('AI predicted your likely exam topics.')
     } else {
-      toast('Materials added. Your predictions now use this study set.')
+      toast(`Materials added. Predictions come from the offline engine. ${aiFallbackReason()}`, 'error')
     }
   }
 

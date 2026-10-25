@@ -6,7 +6,7 @@ import PageHeader from '../components/PageHeader'
 import { Badge, Button, EmptyState } from '../components/Common'
 import { useApp } from '../context/AppContext'
 import { createId, downloadText, safeFileName, truncate, wordCount } from '../lib/intelligence'
-import { aiResearch } from '../lib/aiClient'
+import { aiFallbackReason, aiResearch } from '../lib/aiClient'
 
 const SUGGESTIONS = [
   { label: 'Topic', text: 'Educational data science in higher education' },
@@ -59,7 +59,10 @@ export default function ResearchPage() {
     setReport(nextReport)
     saveResearch(nextReport)
     setLoading(false)
-    toast(nextReport.source === 'nvidia' ? 'Research draft generated with NVIDIA AI.' : 'Research draft is ready.')
+    toast(nextReport.source === 'nvidia'
+      ? 'Research draft generated with AI.'
+      : `Draft written by the offline engine. ${aiFallbackReason()}`,
+    nextReport.source === 'nvidia' ? 'success' : 'error')
   }
 
   const reportText = report ? [
@@ -110,7 +113,7 @@ export default function ResearchPage() {
 
           {!loading && report && (
             <article className="research-report">
-              <div className="report-header"><div><Badge tone={report.source === 'nvidia' ? 'green' : 'purple'}>{report.source === 'nvidia' ? 'NVIDIA AI' : 'LOCAL'} · {report.targetWords} WORD TARGET</Badge><h2>{report.title}</h2><p>Generated from {report.references.length} source{report.references.length === 1 ? '' : 's'} · {new Date(report.createdAt).toLocaleDateString()}</p></div><div className="report-actions"><button onClick={copyReport}>{copied ? <Check size={17} /> : <Copy size={17} />}</button><button onClick={() => { downloadText(`${safeFileName(report.title)}-research.md`, reportText, 'text/markdown'); toast('Research draft downloaded.') }}><Download size={17} /></button><button onClick={() => window.print()}><Clipboard size={17} /></button></div></div>
+              <div className="report-header"><div><Badge tone={report.source === 'nvidia' ? 'green' : 'purple'}>{report.source === 'nvidia' ? 'AI' : 'OFFLINE ENGINE'} · {report.targetWords} WORD TARGET</Badge><h2>{report.title}</h2><p>Generated from {report.references.length} source{report.references.length === 1 ? '' : 's'} · {new Date(report.createdAt).toLocaleDateString()}</p></div><div className="report-actions"><button onClick={copyReport}>{copied ? <Check size={17} /> : <Copy size={17} />}</button><button onClick={() => { downloadText(`${safeFileName(report.title)}-research.md`, reportText, 'text/markdown'); toast('Research draft downloaded.') }}><Download size={17} /></button><button onClick={() => window.print()}><Clipboard size={17} /></button></div></div>
               {report.sections.map((section, index) => <section className="report-section" key={section.heading}><div className="report-section-number">0{index + 1}</div><div><h3>{section.heading}</h3>{section.paragraphs.map((paragraph, paragraphIndex) => <p key={paragraphIndex}>{paragraph}</p>)}</div></section>)}
               <section className="report-references"><h3>References</h3>{report.references.map((reference) => <p key={reference}>{reference}</p>)}</section>
               <div className="report-disclaimer"><Sparkles size={16} /><p>This is a local draft based on the material you supplied. Verify every claim and citation before submitting academic work.</p></div>

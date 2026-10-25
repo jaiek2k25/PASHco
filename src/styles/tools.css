@@ -458,3 +458,18 @@ kbd { display: inline-grid; place-items: center; min-width: 20px; padding: 2px 5
 
 /* Document extraction feedback */
 .attachment-reading { display: flex; align-items: center; gap: 6px; margin: 2px 0 8px; font-size: 12.5px; color: #5c6272; }
+
+/* Honest AI-mode line above the solver composer */
+.ai-mode { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 14px; padding: 9px 13px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); font-size: 12px; color: var(--muted); }
+.ai-mode strong { color: var(--text); font-size: 12px; }
+.ai-mode-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted-2); flex: 0 0 auto; }
+.ai-mode-on .ai-mode-dot { background: #1fa971; box-shadow: 0 0 0 3px rgba(31, 169, 113, .16); }
+.ai-mode-off .ai-mode-dot { background: #d89614; box-shadow: 0 0 0 3px rgba(216, 150, 20, .16); }
+.ai-mode-warn { color: #b5761a; }
+.ai-mode button { margin-left: auto; border: 0; background: none; color: var(--accent); font-weight: 600; font-size: 12px; cursor: pointer; }
+.ai-mode button:hover { text-decoration: underline; }
+@media (max-width: 640px) { .ai-mode { font-size: 11px; } .ai-mode button { margin-left: 0; } }
+.ai-mode-warn-row { border-color: rgba(216, 150, 20, .35); background: rgba(216, 150, 20, .07); }
+.ai-mode-warn-row .ai-mode-dot { background: #d89614; box-shadow: 0 0 0 3px rgba(216, 150, 20, .16); }
+.ai-mode-warn-row strong { color: #8a5b0c; }
+.chat-offline { font-style: normal; font-size: 9px; text-transform: uppercase; letter-spacing: .05em; color: #8a5b0c; background: rgba(216, 150, 20, .13); border-radius: 999px; padding: 1px 6px; margin-left: 6px; font-weight: 700; }

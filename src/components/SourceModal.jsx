@@ -3,7 +3,7 @@ import { AlertCircle, CheckCircle2, FileText, Image as ImageIcon, Link2, LoaderC
 import { Button, Modal } from './Common'
 import { useApp } from '../context/AppContext'
 import { createId, sampleStudyMaterial, wordCount } from '../lib/intelligence'
-import { aiStudyPackFromDocument, readImageText } from '../lib/aiClient'
+import { aiFallbackReason, aiStudyPackFromDocument, readImageText } from '../lib/aiClient'
 import { condenseMaterial, extractDocumentText, fileKind } from '../lib/fileExtract'
 
 const KIND_LABEL = {
@@ -134,7 +134,7 @@ export default function SourceModal({ open, onClose, title = 'Create a new study
       if (pack.source === 'nvidia') {
         toast(pack.deepRead ? `Read all ${pack.sectionsRead} sections and generated your study set.` : 'Study set generated with your AI key.')
       } else {
-        toast('Study set built with the local engine. Connect an AI key for sharper results.', 'error')
+        toast(`Study set built with the offline engine. ${aiFallbackReason()}`, 'error')
       }
       setName('')
       setText('')

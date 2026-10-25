@@ -23,7 +23,15 @@ function readStore() {
 }
 
 function writeStore(store) {
-  window.localStorage.setItem(STORE_KEY, JSON.stringify(store))
+  try {
+    window.localStorage.setItem(STORE_KEY, JSON.stringify(store))
+  } catch {
+    // Private browsing and blocked storage land here; say so plainly.
+    throw localError(
+      'This browser is blocking local storage, so an account cannot be saved here. Turn off private mode or allow site data, then try again.',
+      'NO_STORAGE',
+    )
+  }
 }
 
 function toHex(buffer) {
@@ -79,7 +87,11 @@ export function saveLocalWorkspace(workspace) {
   const all = readWorkspaces()
   const syncedAt = new Date().toISOString()
   all[account.id] = { workspace, syncedAt }
-  window.localStorage.setItem(WORKSPACE_KEY, JSON.stringify(all))
+  try {
+    window.localStorage.setItem(WORKSPACE_KEY, JSON.stringify(all))
+  } catch {
+    return { ok: false, syncedAt: null, local: true }
+  }
   return { ok: true, syncedAt, local: true }
 }
 

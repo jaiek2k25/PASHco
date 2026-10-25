@@ -7,6 +7,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
   return {
+    // Project sites live under /<repo>/ — set VITE_BASE_PATH for those builds.
+    base: process.env.VITE_BASE_PATH || '/',
     plugins: [react(), nvidiaAiPlugin(env), accountPlugin()],
     server: {
       host: '0.0.0.0',

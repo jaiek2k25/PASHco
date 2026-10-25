@@ -81,6 +81,10 @@ Ready-made configs are in the repo: **`Dockerfile`** + **`fly.toml`** (Fly.io, 1
 **`render.yaml`** (Render blueprint), and a generic container path for Railway or a VPS.
 Full instructions, including the post-deploy checklist, are in **[DEPLOY.md](DEPLOY.md)**.
 
+A GitHub Pages workflow is also included for a static preview at
+`https://jaiek2k25.github.io/PASHco/`. That build runs entirely in the browser, so accounts and
+live AI are unavailable there — see [DEPLOY.md](DEPLOY.md).
+
 ## Reading uploaded documents
 
 Uploads are parsed **in the browser** — the file never leaves the device just to be read.

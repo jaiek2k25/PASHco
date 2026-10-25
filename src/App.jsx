@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { AppProvider } from './context/AppContext'
 import { AuthModal, ToastHost, UpgradeModal } from './components/Common'
+import StaticHostNotice from './components/StaticHostNotice'
 import ServiceSettingsModal from './components/ServiceSettingsModal'
 import WorkspaceLayout from './components/WorkspaceLayout'
 import Landing from './pages/Landing'
@@ -70,14 +71,19 @@ export function AppRoutes() {
       <AuthModal />
       <UpgradeModal />
       <ServiceSettingsModal />
+      <StaticHostNotice />
       <ToastHost />
     </>
   )
 }
 
+// A project site is served from a subpath (e.g. /PASHco/), so the router has to
+// strip that prefix or every route resolves to "not found".
+const BASENAME = (import.meta.env.BASE_URL || '/').replace(/\/$/, '') || '/'
+
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={BASENAME}>
       <AppProvider>
         <AppRoutes />
       </AppProvider>

@@ -15,6 +15,25 @@ Three required settings:
 
 Rotate `WESOLVE_SESSION_SECRET` to sign every existing session out.
 
+## GitHub Pages (static preview only)
+
+`https://jaiek2k25.github.io/PASHco/`
+
+The workflow in `.github/workflows/deploy-pages.yml` builds the app and publishes `dist/`.
+It sets the base path to `/PASHco/` and copies `index.html` to `404.html` so deep links work.
+
+**What works there:** the landing page, pricing, and the whole app in guest mode — solver,
+whiteboard, flashcards, quizzes, study packs — using the local engine, with work saved in the
+browser. A notice in the app says so.
+
+**What cannot work there:** accounts and live AI. Pages serves files only; there is no Node
+process for `/api/auth` or `/api/ai`. AI keys are therefore unusable on Pages, and signing in
+has nothing to talk to.
+
+If Pages still shows a blank page, the repo is set to publish the source branch instead of the
+build. Fix it once in **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+The workflow also tries to switch this automatically via `actions/configure-pages`.
+
 ## Option 1 — Fly.io (recommended: persistent volume, cheap, always on)
 
 ```bash

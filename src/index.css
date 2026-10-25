@@ -1,0 +1,411 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-obsidian: #0B0A12;
+    --text-starlight: #F8FAFC;
+    --neuro-dopamine-red: #F43F5E;
+    --neuro-focus-blue: #3B82F6;
+    --neuro-reward-gold: #F59E0B;
+    --neuro-calm-green: #10B981;
+    --neuro-synthesis-violet: #8B5CF6;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    color: #F8FAFC;
+    background-color: #0B0A12;
+    overflow-x: hidden;
+  }
+}
+
+/* Fixed PASHco visual foundation blended into Deep Obsidian Dark Cosmos */
+.pashco-bg-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background-image: url('/pashco-bg.jpg');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  transform: scale(1.02);
+  filter: invert(0.92) hue-rotate(185deg) saturate(1.35) brightness(0.45) contrast(1.25);
+}
+
+.pashco-bg-veil {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 14% 16%, rgba(139, 92, 246, 0.24) 0%, transparent 42%),
+    radial-gradient(circle at 86% 18%, rgba(245, 158, 11, 0.20) 0%, transparent 45%),
+    radial-gradient(circle at 18% 82%, rgba(59, 130, 246, 0.18) 0%, transparent 45%),
+    radial-gradient(circle at 82% 84%, rgba(16, 185, 129, 0.15) 0%, transparent 45%),
+    linear-gradient(180deg, rgba(11, 10, 18, 0.82) 0%, rgba(15, 13, 26, 0.88) 50%, rgba(9, 8, 16, 0.94) 100%);
+  backdrop-filter: blur(4px);
+}
+
+.pashco-bg-veil-focus {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(37, 99, 235, 0.28) 0%, transparent 48%),
+    radial-gradient(circle at 80% 75%, rgba(16, 185, 129, 0.22) 0%, transparent 48%),
+    linear-gradient(180deg, rgba(8, 13, 26, 0.86) 0%, rgba(7, 17, 24, 0.93) 100%);
+  backdrop-filter: blur(4px);
+}
+
+.pashco-bg-veil-arcade {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(168, 85, 247, 0.32) 0%, transparent 45%),
+    radial-gradient(circle at 82% 22%, rgba(244, 63, 94, 0.24) 0%, transparent 45%),
+    radial-gradient(circle at 50% 85%, rgba(245, 158, 11, 0.20) 0%, transparent 50%),
+    linear-gradient(180deg, rgba(9, 7, 18, 0.85) 0%, rgba(6, 5, 12, 0.95) 100%);
+  backdrop-filter: blur(4px);
+}
+
+/* ============================================================================
+   DEEP 3D "BOX-BEHIND-BOX" ARCHITECTURAL SHADOW SYSTEM (LUMINOUS DARK MODE)
+============================================================================ */
+.box-behind-stage {
+  position: relative;
+  z-index: 1;
+}
+
+.box-behind-stage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translate(10px, 12px);
+  border-radius: 30px;
+  background: linear-gradient(135deg, #7C3AED 0%, #EC4899 50%, #F59E0B 100%);
+  border: 1.5px solid rgba(255, 255, 255, 0.22);
+  z-index: -1;
+  box-shadow:
+    0 24px 55px -8px rgba(124, 58, 237, 0.50),
+    0 12px 28px -4px rgba(245, 158, 11, 0.28);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.28s ease;
+}
+
+.box-behind-stage:hover::before {
+  transform: translate(13px, 15px);
+  box-shadow:
+    0 28px 65px -6px rgba(139, 92, 246, 0.65),
+    0 14px 32px -4px rgba(245, 158, 11, 0.38);
+}
+
+.box-behind-gold {
+  position: relative;
+  z-index: 1;
+}
+
+.box-behind-gold::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translate(9px, 11px);
+  border-radius: 28px;
+  background: linear-gradient(135deg, #F59E0B 0%, #D97706 55%, #7C3AED 100%);
+  border: 1.5px solid rgba(254, 243, 199, 0.3);
+  z-index: -1;
+  box-shadow:
+    0 22px 50px -10px rgba(245, 158, 11, 0.42),
+    0 10px 24px -4px rgba(0, 0, 0, 0.65);
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.box-behind-gold:hover::before {
+  transform: translate(12px, 14px);
+}
+
+.box-behind-blue {
+  position: relative;
+  z-index: 1;
+}
+
+.box-behind-blue::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translate(9px, 11px);
+  border-radius: 28px;
+  background: linear-gradient(135deg, #2563EB 0%, #06B6D4 55%, #10B981 100%);
+  border: 1.5px solid rgba(147, 197, 253, 0.3);
+  z-index: -1;
+  box-shadow:
+    0 22px 50px -10px rgba(37, 99, 235, 0.45),
+    0 10px 24px -4px rgba(0, 0, 0, 0.65);
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.box-behind-blue:hover::before {
+  transform: translate(12px, 14px);
+}
+
+/* Elevated Question Display Box inside Kahoot Stage (Dark Mode) */
+.kahoot-question-box {
+  background: linear-gradient(145deg, rgba(30, 27, 48, 0.96) 0%, rgba(19, 17, 33, 0.98) 100%);
+  border: 2px solid rgba(251, 191, 36, 0.42);
+  color: #F8FAFC;
+  box-shadow:
+    0 8px 0 0 #06050B,
+    0 18px 40px -6px rgba(0, 0, 0, 0.65),
+    0 0 28px -8px rgba(139, 92, 246, 0.28),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.16);
+}
+
+/* Tier 1 — Primary Dark Frosted Glass Container */
+.glass-panel {
+  background: linear-gradient(145deg, rgba(24, 21, 38, 0.88) 0%, rgba(16, 14, 28, 0.82) 100%);
+  backdrop-filter: blur(22px) saturate(175%);
+  -webkit-backdrop-filter: blur(22px) saturate(175%);
+  border: 1.5px solid rgba(139, 92, 246, 0.32);
+  color: #F8FAFC;
+  box-shadow:
+    0 6px 0 0 #05040A,
+    0 20px 48px -10px rgba(0, 0, 0, 0.65),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.12);
+}
+
+/* Tier 2 — Elevated Interactive Dark Glass Card */
+.glass-card {
+  background: linear-gradient(145deg, rgba(28, 25, 46, 0.94) 0%, rgba(17, 15, 30, 0.92) 100%);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 2px solid rgba(251, 191, 36, 0.28);
+  color: #F8FAFC;
+  box-shadow:
+    0 8px 0 0 #05040A,
+    0 24px 55px -10px rgba(0, 0, 0, 0.72),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.15);
+  transition: all 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.glass-card-interactive:hover {
+  transform: translateY(-4px);
+  border-color: rgba(251, 191, 36, 0.65);
+  box-shadow:
+    0 12px 0 0 #05040A,
+    0 30px 65px -10px rgba(245, 158, 11, 0.28),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.25);
+}
+
+/* Tier 3 — Golden Highlight Dark Glass Card */
+.glass-gold {
+  background: linear-gradient(135deg, rgba(46, 33, 18, 0.94) 0%, rgba(31, 22, 38, 0.92) 100%);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 2px solid rgba(251, 191, 36, 0.60);
+  color: #FFFBEB;
+  box-shadow:
+    0 8px 0 0 #06050B,
+    0 22px 48px -8px rgba(245, 158, 11, 0.28),
+    inset 0 1px 0 0 rgba(254, 243, 199, 0.25);
+}
+
+/* ============================================================================
+   KAHOOT-INSPIRED NEURO-PSYCHOLOGY 3D GAME TILES (▲ ◆ ● ■)
+============================================================================ */
+.kahoot-tile {
+  position: relative;
+  border-radius: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.24);
+  color: #FFFFFF;
+  font-weight: 800;
+  transition: transform 0.14s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.14s cubic-bezier(0.22, 1, 0.36, 1), filter 0.14s ease;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.kahoot-tile:hover:not(:disabled) {
+  transform: translateY(-3px);
+  filter: brightness(1.08);
+}
+
+.kahoot-tile:active:not(:disabled) {
+  transform: translateY(4px);
+}
+
+/* Tile 1: ▲ Triangle — Dopamine Coral Crimson */
+.kahoot-tile-red {
+  background: linear-gradient(145deg, #FB7185 0%, #E11D48 55%, #BE123C 100%);
+  box-shadow:
+    0 7px 0 0 #881337,
+    0 16px 32px -6px rgba(244, 63, 94, 0.55),
+    inset 0 1.5px 0 0 rgba(255, 255, 255, 0.42);
+}
+.kahoot-tile-red:hover:not(:disabled) {
+  box-shadow:
+    0 10px 0 0 #881337,
+    0 22px 40px -6px rgba(244, 63, 94, 0.70),
+    inset 0 1.5px 0 0 rgba(255, 255, 255, 0.55);
+}
+.kahoot-tile-red:active:not(:disabled) {
+  box-shadow: 0 2px 0 0 #881337, 0 6px 12px rgba(244, 63, 94, 0.4);
+}
+
+/* Tile 2: ◆ Diamond — Prefrontal Sapphire Blue */
+.kahoot-tile-blue {
+  background: linear-gradient(145deg, #60A5FA 0%, #2563EB 55%, #1D4ED8 100%);
+  box-shadow:
+    0 7px 0 0 #1E3A8A,
+    0 16px 32px -6px rgba(59, 130, 246, 0.55),
+    inset 0 1.5px 0 0 rgba(255, 255, 255, 0.42);
+}
+.kahoot-tile-blue:hover:not(:disabled) {
+  box-shadow:
+    0 10px 0 0 #1E3A8A,
+    0 22px 40px -6px rgba(59, 130, 246, 0.70),
+    inset 0 1.5px 0 0 rgba(255, 255, 255, 0.55);
+}
+.kahoot-tile-blue:active:not(:disabled) {
+  box-shadow: 0 2px 0 0 #1E3A8A, 0 6px 12px rgba(59, 130, 246, 0.4);
+}
+
+/* Tile 3: ● Circle — Solar Dopamine Amber-Gold */
+.kahoot-tile-gold {
+  background: linear-gradient(145deg, #FBBF24 0%, #F59E0B 55%, #D97706 100%);
+  box-shadow:
+    0 7px 0 0 #78350F,
+    0 16px 32px -6px rgba(245, 158, 11, 0.55),
+    inset 0 1.5px 0 0 rgba(255, 255, 255, 0.45);
+}
+.kahoot-tile-gold:hover:not(:disabled) {
+  box-shadow:
+    0 10px 0 0 #78350F,
+    0 22px 40px -6px rgba(245, 158, 11, 0.70),
+    inset 0 1.5px 0 0 rgba(255, 255, 255, 0.55);
+}
+.kahoot-tile-gold:active:not(:disabled) {
+  box-shadow: 0 2px 0 0 #78350F, 0 6px 12px rgba(245, 158, 11, 0.4);
+}
+
+/* Tile 4: ■ Square — Acetylcholine Emerald Green */
+.kahoot-tile-green {
+  background: linear-gradient(145deg, #34D399 0%, #10B981 55%, #059669 100%);
+  box-shadow:
+    0 7px 0 0 #064E3B,
+    0 16px 32px -6px rgba(16, 185, 129, 0.55),
+    inset 0 1.5px 0 0 rgba(255, 255, 255, 0.42);
+}
+.kahoot-tile-green:hover:not(:disabled) {
+  box-shadow:
+    0 10px 0 0 #064E3B,
+    0 22px 40px -6px rgba(16, 185, 129, 0.70),
+    inset 0 1.5px 0 0 rgba(255, 255, 255, 0.55);
+}
+.kahoot-tile-green:active:not(:disabled) {
+  box-shadow: 0 2px 0 0 #064E3B, 0 6px 12px rgba(16, 185, 129, 0.4);
+}
+
+/* Synaptic Violet Stage Header (Kahoot Arena Banner) */
+.arena-stage-header {
+  background: linear-gradient(135deg, #5B21B6 0%, #7C3AED 55%, #4F46E5 100%);
+  color: #FFFFFF;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  box-shadow:
+    0 6px 0 0 #1E1B4B,
+    0 14px 30px -6px rgba(124, 58, 237, 0.55),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.35);
+}
+
+/* Subtle Pill Glass (Dark Mode) */
+.glass-pill {
+  background: rgba(30, 27, 48, 0.90);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1.5px solid rgba(251, 191, 36, 0.35);
+  color: #F8FAFC;
+  box-shadow: 0 4px 0 0 #05040A, 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* Primary 3D Tactile Liquid Gold Button */
+.btn-gold {
+  background: linear-gradient(135deg, #FDE047 0%, #FBBF24 50%, #F59E0B 100%);
+  color: #0B0A12;
+  border: 2px solid #FEF08A;
+  box-shadow:
+    0 6px 0 0 #92400E,
+    0 14px 30px -4px rgba(245, 158, 11, 0.55),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.75);
+  transition: all 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.btn-gold:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow:
+    0 8px 0 0 #92400E,
+    0 18px 36px -4px rgba(251, 191, 36, 0.70),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.9);
+  filter: brightness(1.05);
+}
+
+.btn-gold:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow:
+    0 2px 0 0 #92400E,
+    0 6px 12px rgba(245, 158, 11, 0.4);
+}
+
+/* Secondary 3D Tactile Violet Button */
+.btn-violet {
+  background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%);
+  color: #FFFFFF;
+  border: 2px solid rgba(221, 214, 254, 0.45);
+  box-shadow:
+    0 6px 0 0 #2E1065,
+    0 14px 28px -4px rgba(139, 92, 246, 0.55),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.35);
+  transition: all 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.btn-violet:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow:
+    0 8px 0 0 #2E1065,
+    0 18px 34px -4px rgba(139, 92, 246, 0.70);
+}
+
+.btn-violet:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 0 #2E1065;
+}
+
+/* Dark Secondary Surface Button */
+.btn-dark-surface {
+  background: linear-gradient(145deg, #231F38 0%, #171426 100%);
+  color: #F8FAFC;
+  border: 2px solid rgba(251, 191, 36, 0.38);
+  box-shadow: 0 5px 0 0 #05040A, 0 10px 20px rgba(0, 0, 0, 0.45);
+  transition: all 0.16s ease;
+}
+
+.btn-dark-surface:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: rgba(251, 191, 36, 0.75);
+  background: linear-gradient(145deg, #2D2847 0%, #1E1A31 100%);
+}
+
+/* Custom Dark Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0B0A12;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.45);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(251, 191, 36, 0.65);
+}

@@ -81,23 +81,28 @@ Ready-made configs are in the repo: **`Dockerfile`** + **`fly.toml`** (Fly.io, 1
 **`render.yaml`** (Render blueprint), and a generic container path for Railway or a VPS.
 Full instructions, including the post-deploy checklist, are in **[DEPLOY.md](DEPLOY.md)**.
 
-## AI keys and providers
+## AI keys: one per user
 
-There are two ways AI gets paid for, and both are supported at once:
+WeSolve does not ship a shared key. **Every user connects their own**, so each person pays for
+their own inference and nobody can spend someone else's credits.
 
-| Mode | Who pays | How to enable |
+| Where the user is | Where the key lives | Lifetime |
 | --- | --- | --- |
-| **Shared site key** | The site owner | Set `NVIDIA_API_KEY` on the server. Every visitor uses it. |
-| **Personal key** | Each visitor | Settings → AI → paste a key. It is stored in that browser only, sent per request, and never saved on the server. |
+| Signed in | Encrypted on their account (AES-256-GCM, key derived from the server secret) | Follows them to every device |
+| Guest | `localStorage` in that browser | Until they clear site data |
+| Both | Never in the workspace sync, never returned to any browser | — |
 
-A visitor's own key always wins over the server key for that visitor, so nobody spends
-someone else's quota by accident. Because a shared key is one pool of credits, `/api/ai`
-rate-limits each caller — 4 requests per 30 s and 12 per 5 min anonymously, more for signed-in
-accounts (10 per 30 s, 60 per 5 min). Exceeding a limit returns `429` with `Retry-After`, and the
-client retries with backoff instead of silently falling back to the local engine.
+The API only ever exposes a masked hint (`nvapi-••••1234`). Plaintext keys exist in memory for
+the duration of one upstream request and are never logged or written unencrypted.
+
+Requests are paid for by the caller's own key, so rate limits are abuse protection rather than
+budget protection: 20 requests per 30 s and 200 per 5 min per identity. A site owner can still
+opt into a shared key for a demo by setting **both** `NVIDIA_API_KEY` and
+`WESOLVE_SHARED_KEY=true`; in that mode the tighter allowance (4 / 30 s, 12 / 5 min) applies to
+protect the shared budget. A user's own key always takes precedence over a shared one.
 
 The **API base URL** field accepts any OpenAI-compatible endpoint, so DeepSeek, Groq, OpenRouter,
-Together, or a self-hosted gateway can be used with the matching model id:
+Together, or a self-hosted gateway work with the matching model id:
 
 ```text
 Base URL  https://integrate.api.nvidia.com/v1    Model  deepseek-ai/deepseek-r1
@@ -105,10 +110,10 @@ Base URL  https://api.groq.com/openai/v1         Model  llama-3.3-70b-versatile
 Base URL  https://openrouter.ai/api/v1           Model  deepseek/deepseek-r1
 ```
 
-URLs must use HTTPS. Loopback addresses are only accepted when the app itself runs on localhost,
-and private network ranges are rejected, so the proxy cannot be turned into an SSRF tool.
+URLs must use HTTPS. Loopback addresses are only accepted while the app itself runs on localhost,
+and private network ranges are rejected, so the proxy cannot be pointed at internal services.
 
-## NVIDIA AI setup
+## NVIDIA AI setup## NVIDIA AI setup
 
 The app now supports real NVIDIA Build inference through a **same-origin server proxy**. The browser never needs to call NVIDIA directly, which avoids CORS issues and keeps server keys out of the front-end bundle.
 

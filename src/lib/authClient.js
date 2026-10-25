@@ -33,4 +33,9 @@ export const authApi = {
   updateProfile: (payload) => call('/profile', { method: 'PATCH', body: payload }),
   changePassword: (payload) => call('/password', { method: 'POST', body: payload }),
   deleteAccount: (password) => call('/account', { method: 'DELETE', body: { password } }),
+  // AI credentials live on the account, encrypted at rest. The API only ever
+  // returns a masked hint, never the key itself.
+  getAiKey: () => call('/ai-key'),
+  saveAiKey: (payload) => call('/ai-key', { method: 'PUT', body: payload }),
+  clearAiKey: () => call('/ai-key', { method: 'DELETE' }),
 }

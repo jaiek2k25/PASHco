@@ -100,7 +100,7 @@ async function directNvidiaRequest(task, payload, settings) {
 export async function getAiStatus() {
   const settings = getServiceSettings()
   const headers = {}
-  if (settings.nvidiaApiKey) headers['x-nvidia-api-key'] = settings.nvidiaApiKey
+  if (settings.nvidiaApiKey) headers['x-ai-api-key'] = settings.nvidiaApiKey
   if (settings.nvidiaBaseUrl) headers['x-ai-base-url'] = settings.nvidiaBaseUrl
   try {
     const response = await fetch('/api/ai/status', { headers, cache: 'no-store' })
@@ -123,7 +123,7 @@ function isRetryable(error) {
 export async function requestAi(task, payload = {}, options = {}) {
   const settings = getServiceSettings()
   const headers = { 'Content-Type': 'application/json' }
-  if (settings.nvidiaApiKey) headers['x-nvidia-api-key'] = settings.nvidiaApiKey
+  if (settings.nvidiaApiKey) headers['x-ai-api-key'] = settings.nvidiaApiKey
   if (settings.nvidiaBaseUrl) headers['x-ai-base-url'] = settings.nvidiaBaseUrl
   const attempts = Math.max(1, options.retries ?? 3)
 

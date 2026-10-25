@@ -450,3 +450,15 @@ label { font-weight: 600; }
 .crash-actions { display: flex; gap: 10px; margin-top: 6px; }
 .crash-card button { border: 0; border-radius: 10px; padding: 10px 16px; font: inherit; font-weight: 600; background: #3155ff; color: #fff; cursor: pointer; }
 .crash-card button.crash-ghost { background: #eef1fb; color: #3155ff; }
+
+/* AI key ownership */
+.service-owner { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; font-size: 13px; }
+.service-owner svg { flex: 0 0 auto; margin-top: 2px; }
+.service-owner strong { display: block; font-size: 13.5px; }
+.service-owner p { margin: 2px 0 0; color: inherit; opacity: 0.78; }
+.service-owner.is-account { background: #eefaf2; border: 1px solid #bfe8cf; color: #146b3f; }
+.service-owner.is-guest { background: #f2f5ff; border: 1px solid #d9e1fb; color: #2f3f7a; }
+.link-button { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: #3155ff; text-decoration: underline; cursor: pointer; }
+.saved-key-row { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 10px 12px; border: 1px dashed #cfd7ee; border-radius: 10px; background: #fbfcff; margin-bottom: 10px; }
+.saved-key-hint { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; color: #20232e; }
+.saved-key-note { font-size: 12.5px; color: #6b7280; }

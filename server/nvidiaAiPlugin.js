@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer'
-import { readSession } from './authStore.js'
+import { aiKeyStatus, getAiCredentials, readSession } from './authStore.js'
+import { DEFAULT_BASE_URL, chatCompletionsUrl, validateBaseUrl } from './aiEndpoint.js'
 
-const DEFAULT_NVIDIA_BASE_URL = 'https://integrate.api.nvidia.com/v1'
 const DEFAULT_TEXT_MODEL = 'meta/llama-3.3-70b-instruct'
 const DEFAULT_VISION_MODEL = 'meta/llama-3.2-11b-vision-instruct'
 const MAX_BODY_BYTES = 12 * 1024 * 1024
@@ -10,8 +10,10 @@ const MAX_BODY_BYTES = 12 * 1024 * 1024
 // caller gets a burst limit and a rolling window limit. Signed-in accounts get a
 // larger allowance than anonymous visitors.
 const LIMITS = {
-  anonymous: { burst: { max: 4, windowMs: 30 * 1000 }, window: { max: 12, windowMs: 5 * 60 * 1000 } },
-  account: { burst: { max: 10, windowMs: 30 * 1000 }, window: { max: 60, windowMs: 5 * 60 * 1000 } },
+  // Abuse protection only: the caller pays for their own tokens.
+  personal: { burst: { max: 20, windowMs: 30 * 1000 }, window: { max: 200, windowMs: 5 * 60 * 1000 } },
+  // Opt-in shared server key = one shared budget, so it stays tighter.
+  shared: { burst: { max: 4, windowMs: 30 * 1000 }, window: { max: 12, windowMs: 5 * 60 * 1000 } },
 }
 
 const buckets = new Map()
@@ -64,40 +66,17 @@ function callerIdentity(req) {
   return { id: `ip:${forwarded || req.socket?.remoteAddress || 'unknown'}`, tier: 'anonymous' }
 }
 
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
-const PRIVATE_HOST = /^(10\.|127\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/
-
 /**
- * Resolve the OpenAI-compatible endpoint. A per-browser override lets someone use
- * DeepSeek / Groq / OpenRouter while keeping the key in their own browser. The URL
- * is validated so the proxy can never be pointed at internal infrastructure.
+ * Resolve the endpoint for this request: explicit per-browser override, then the
+ * endpoint saved on the signed-in account, then the server default.
  */
-function resolveBaseUrl(req, env) {
+function resolveBaseUrl(req, env, account) {
   const headerValue = req.headers['x-ai-base-url']
   const header = Array.isArray(headerValue) ? headerValue[0] : headerValue
-  const candidate = safeString(header || process.env.NVIDIA_BASE_URL || env.NVIDIA_BASE_URL || DEFAULT_NVIDIA_BASE_URL, 400).trim()
-  let url
-  try {
-    url = new URL(candidate)
-  } catch {
-    throw Object.assign(new Error('The API base URL is not a valid URL.'), { status: 400 })
-  }
-  const host = url.hostname.toLowerCase()
-  const requestHost = String(req.headers.host || '').split(':')[0].toLowerCase()
-  const requestIsLocal = LOCAL_HOSTS.has(requestHost)
-  const isLoopback = LOCAL_HOSTS.has(host)
-  // Loopback is fine for local development, never for a deployed site.
-  const allowLoopback = isLoopback && requestIsLocal
-  if (isLoopback && !allowLoopback) {
-    throw Object.assign(new Error('A localhost API base URL is only allowed when the app itself runs locally.'), { status: 400 })
-  }
-  if (!allowLoopback && PRIVATE_HOST.test(host)) {
-    throw Object.assign(new Error('A private-network API base URL is not allowed.'), { status: 400 })
-  }
-  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && allowLoopback)) {
-    throw Object.assign(new Error('The API base URL must use HTTPS.'), { status: 400 })
-  }
-  return `${url.origin}${url.pathname}`.replace(/\/+$/, '')
+  const candidate = header || account?.baseUrl || process.env.NVIDIA_BASE_URL || env.NVIDIA_BASE_URL || DEFAULT_BASE_URL
+  const { url, error } = validateBaseUrl(candidate, { req })
+  if (error) throw Object.assign(new Error(error), { status: 400 })
+  return url || DEFAULT_BASE_URL
 }
 
 const TASK_CONFIG = {
@@ -265,14 +244,29 @@ function extractJson(text) {
   return JSON.parse(cleaned.slice(first, last + 1))
 }
 
-function getKey(req, env) {
-  const headerValue = req.headers['x-nvidia-api-key']
-  const headerKey = Array.isArray(headerValue) ? headerValue[0] : headerValue
-  return safeString(headerKey || process.env.NVIDIA_API_KEY || env.NVIDIA_API_KEY || '', 2000).trim()
+const sharedKeyEnabled = () => String(process.env.WESOLVE_SHARED_KEY || '').toLowerCase() === 'true'
+
+function headerKey(req) {
+  const value = req.headers['x-ai-api-key'] ?? req.headers['x-nvidia-api-key']
+  return safeString(Array.isArray(value) ? value[0] : value || '', 2000).trim()
 }
 
-function getSetting(body, env, key, fallback) {
-  return safeString(body?.[key] || process.env[key] || env[key] || fallback, 200).trim() || fallback
+/**
+ * Every user brings their own key. Resolution order:
+ *   1. an explicit per-request key (a guest keeps theirs in this browser)
+ *   2. the key saved on the signed-in account, encrypted at rest
+ *   3. an opt-in shared server key, only when WESOLVE_SHARED_KEY=true
+ */
+function resolveCredentials(req, env) {
+  const sessionUser = readSession(parseCookies(req.headers.cookie).wesolve_session)
+  const account = sessionUser
+    ? getAiCredentials(sessionUser)
+    : { key: '', baseUrl: '', model: '', visionModel: '' }
+  const personal = headerKey(req)
+  const shared = sharedKeyEnabled() ? safeString(process.env.NVIDIA_API_KEY || env.NVIDIA_API_KEY || '', 2000).trim() : ''
+  const key = personal || account.key || shared
+  const source = personal ? 'browser' : account.key ? 'account' : shared ? 'shared' : 'none'
+  return { key, source, account, user: sessionUser, sharedAvailable: Boolean(shared) }
 }
 
 function buildMessages(task, payload) {
@@ -319,15 +313,18 @@ export function createAiHandler(env = {}) {
     }
 
     if (req.method === 'GET' && (path === '/status' || path === '/')) {
-      const key = getKey(req, env)
+      const { key, source, account, user, sharedAvailable } = resolveCredentials(req, env)
       sendJson(res, 200, {
         configured: Boolean(key),
-        keySource: req.headers['x-nvidia-api-key'] ? 'browser' : key ? 'server' : 'none',
-        model: getSetting({}, env, 'NVIDIA_MODEL', DEFAULT_TEXT_MODEL),
-        visionModel: getSetting({}, env, 'NVIDIA_VISION_MODEL', DEFAULT_VISION_MODEL),
-        provider: 'NVIDIA build.nvidia.com',
-        shared: Boolean(process.env.NVIDIA_API_KEY || env.NVIDIA_API_KEY),
-        signedIn: callerIdentity(req).tier === 'account',
+        keySource: source,
+        hint: aiKeyStatus(user).hint || '',
+        model: safeString(account.model || process.env.NVIDIA_MODEL || env.NVIDIA_MODEL || DEFAULT_TEXT_MODEL, 200),
+        visionModel: safeString(account.visionModel || process.env.NVIDIA_VISION_MODEL || env.NVIDIA_VISION_MODEL || DEFAULT_VISION_MODEL, 200),
+        baseUrl: account.baseUrl || '',
+        provider: account.baseUrl || process.env.NVIDIA_BASE_URL || DEFAULT_BASE_URL,
+        signedIn: Boolean(user),
+        accountKeySaved: aiKeyStatus(user).configured,
+        sharedKeyAvailable: sharedAvailable,
       })
       return
     }
@@ -352,26 +349,29 @@ export function createAiHandler(env = {}) {
       return
     }
 
-    const key = getKey(req, env)
-    if (!key) {
-      sendJson(res, 503, {
-        error: 'No AI key configured. Add one in AI Settings or set NVIDIA_API_KEY on the server.',
-        code: 'NO_API_KEY',
-      })
-      return
-    }
+    const credentials = resolveCredentials(req, env)
 
     let baseUrl
     try {
-      baseUrl = resolveBaseUrl(req, env)
+      baseUrl = resolveBaseUrl(req, env, credentials.account)
     } catch (error) {
       sendJson(res, error.status || 400, { error: error.message, code: 'BAD_BASE_URL' })
       return
     }
 
+    if (!credentials.key) {
+      sendJson(res, 503, {
+        error: credentials.user
+          ? 'Connect your own AI key in Settings to turn on live AI. It is stored encrypted on your account.'
+          : 'Connect your own AI key in Settings to turn on live AI.',
+        code: 'NO_API_KEY',
+      })
+      return
+    }
+
     const model = config.vision
-      ? getSetting(body, env, 'NVIDIA_VISION_MODEL', DEFAULT_VISION_MODEL)
-      : getSetting(body, env, 'NVIDIA_MODEL', DEFAULT_TEXT_MODEL)
+      ? safeString(body.model || credentials.account.visionModel || process.env.NVIDIA_VISION_MODEL || env.NVIDIA_VISION_MODEL || DEFAULT_VISION_MODEL, 200)
+      : safeString(body.model || credentials.account.model || process.env.NVIDIA_MODEL || env.NVIDIA_MODEL || DEFAULT_TEXT_MODEL, 200)
 
     let messages
     try {
@@ -384,7 +384,8 @@ export function createAiHandler(env = {}) {
     // Protect the configured key's quota: a shared server key would otherwise let
     // one visitor drain it. Personal browser keys still share the per-IP limit.
     const caller = callerIdentity(req)
-    const limit = checkRateLimit(caller.id, caller.tier)
+    const tier = credentials.source === 'shared' ? 'shared' : 'personal'
+    const limit = checkRateLimit(caller.id, tier)
     if (!limit.ok) {
       res.setHeader('Retry-After', String(limit.retryAfter))
       sendJson(res, 429, {
@@ -393,18 +394,18 @@ export function createAiHandler(env = {}) {
           : 'You have reached the AI usage limit for now. Try again shortly.',
         code: 'RATE_LIMITED',
         retryAfter: limit.retryAfter,
-        tier: caller.tier,
+        tier,
       })
       return
     }
-    const endpoint = /\/chat\/completions$/.test(baseUrl) ? baseUrl : `${baseUrl}/chat/completions`
+    const endpoint = chatCompletionsUrl(baseUrl)
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 90000)
     try {
       const upstream = await fetch(endpoint, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${key}`,
+          Authorization: `Bearer ${credentials.key}`,
           'Content-Type': 'application/json',
           Accept: 'application/json',
         },

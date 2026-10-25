@@ -1,6 +1,8 @@
 import {
+  aiKeyStatus,
   authenticate,
   changePassword,
+  clearAiCredentials,
   createAccount,
   deleteAccount,
   getWorkspace,
@@ -10,10 +12,12 @@ import {
   normalizeEmail,
   publicUser,
   readSession,
+  saveAiCredentials,
   saveWorkspace,
   SESSION_TTL_SECONDS,
   updateProfile,
 } from './authStore.js'
+import { validateBaseUrl } from './aiEndpoint.js'
 
 const COOKIE_NAME = 'wesolve_session'
 const MAX_BODY_BYTES = 3 * 1024 * 1024
@@ -232,12 +236,69 @@ export function createAccountHandler() {
           return
         }
         const saved = getWorkspace(user)
-        sendJson(res, 200, { user: publicUser(user), syncedAt: saved.syncedAt, hasWorkspace: Boolean(saved.workspace) })
+        sendJson(res, 200, {
+          user: publicUser(user),
+          syncedAt: saved.syncedAt,
+          hasWorkspace: Boolean(saved.workspace),
+          aiKey: aiKeyStatus(user),
+        })
         return
       }
 
       if (method === 'POST' && path === '/logout') {
         sendJson(res, 200, { ok: true }, { 'Set-Cookie': clearCookie(req) })
+        return
+      }
+
+      if (path === '/ai-key') {
+        const user = requireUser(req, res)
+        if (!user) return
+
+        const ipKey = `${ip}:ai-key`
+        if (!rateLimit(`${ipKey}:${method}`, 30, 10 * 60 * 1000)) {
+          sendJson(res, 429, { error: 'Too many updates. Try again shortly.' })
+          return
+        }
+
+        if (method === 'GET') {
+          sendJson(res, 200, { aiKey: aiKeyStatus(user) })
+          return
+        }
+
+        if (method === 'DELETE') {
+          sendJson(res, 200, { aiKey: clearAiCredentials(user) })
+          return
+        }
+
+        if (method === 'PUT') {
+          const body = await readBody(req)
+          const rawKey = typeof body.key === 'string' ? body.key.trim() : undefined
+          if (rawKey !== undefined && rawKey && (rawKey.length < 8 || rawKey.length > 512 || /\s/.test(rawKey))) {
+            sendJson(res, 400, { error: 'That does not look like an API key.', field: 'key' })
+            return
+          }
+          if (typeof body.baseUrl === 'string' && body.baseUrl.trim()) {
+            const { error } = validateBaseUrl(body.baseUrl, { req })
+            if (error) {
+              sendJson(res, 400, { error, field: 'baseUrl' })
+              return
+            }
+          }
+          if (!aiKeyStatus(user).configured && !rawKey) {
+            sendJson(res, 400, { error: 'Enter an API key first.', field: 'key' })
+            return
+          }
+          const status = saveAiCredentials(user, {
+            key: rawKey,
+            ...(body.baseUrl !== undefined ? { baseUrl: body.baseUrl } : {}),
+            ...(body.model !== undefined ? { model: body.model } : {}),
+            ...(body.visionModel !== undefined ? { visionModel: body.visionModel } : {}),
+          })
+          sendJson(res, 200, { aiKey: status })
+          return
+        }
+
+        sendJson(res, 405, { error: 'Method not allowed.' })
         return
       }
 

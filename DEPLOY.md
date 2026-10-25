@@ -9,8 +9,8 @@ Three required settings:
 
 | Variable | Purpose |
 | --- | --- |
-| `NVIDIA_API_KEY` | Server-side key for `/api/ai`. Without it the app still works using the built-in local engines. |
-| `WESOLVE_SESSION_SECRET` | 32+ random bytes that sign session cookies. If unset, one is generated inside the data directory. |
+| `NVIDIA_API_KEY` | **Not required.** Each user connects their own key in Settings. Add this plus `WESOLVE_SHARED_KEY=true` only if you want to pay for everyone. |
+| `WESOLVE_SESSION_SECRET` | 32+ random bytes that sign session cookies **and encrypt each account's saved AI key**. If unset, one is generated in the data directory — but set it explicitly so keys survive a redeploy. |
 | `WESOLVE_DATA_DIR` | Directory holding `accounts.json` + the session secret. Must be the mounted persistent disk. |
 
 Rotate `WESOLVE_SESSION_SECRET` to sign every existing session out.
@@ -77,7 +77,8 @@ is present, and the browser will not send them over plain HTTP.
 - `https://your-domain/api/auth/me` → `{"user":null}`
 - Create an account, refresh, and confirm the avatar keeps you signed in
 - Solve one problem, sign out, sign back in — the solve should still be in History
-- Connect an NVIDIA key in **Settings → AI provider**, then run a solve to confirm live AI
+- Create an account, connect a key in **Settings → AI**, sign out and back in, and confirm the masked hint persists
+- Run a solve to confirm live AI is spending that account's key
 - Back up the disk: the only durable state is `accounts.json` in `WESOLVE_DATA_DIR`
 
 ## Not supported on purpose

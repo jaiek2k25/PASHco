@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto'
+import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
@@ -236,6 +236,104 @@ export function readSession(token) {
   if (!user) return null
   if ((user.sessionVersion || 1) !== parsed.sv) return null
   return user
+}
+
+/* ------------------------------------------------------------------ *
+ * Per-account AI credentials.
+ * Each account pays for its own inference, so the key is stored next to the
+ * account — encrypted with AES-256-GCM and a key derived from the server
+ * secret. The plaintext never leaves the server and is never synced to the
+ * browser; the API only ever exposes a masked hint.
+ * ------------------------------------------------------------------ */
+
+function encryptionKey() {
+  return Buffer.from(hkdfSync('sha256', Buffer.from(getSecret(), 'utf8'), Buffer.from('wesolve-ai-credentials', 'utf8'), Buffer.from('aes-256-gcm', 'utf8'), 32))
+}
+
+function maskSecret(secret) {
+  const value = String(secret || '')
+  if (value.length <= 10) return `${value.slice(0, 2)}••••`
+  return `${value.slice(0, 6)}••••${value.slice(-4)}`
+}
+
+function encryptSecret(plaintext) {
+  const iv = randomBytes(12)
+  const cipher = createCipheriv('aes-256-gcm', encryptionKey(), iv)
+  const ciphertext = Buffer.concat([cipher.update(String(plaintext), 'utf8'), cipher.final()])
+  return { iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), ciphertext: ciphertext.toString('base64') }
+}
+
+function decryptSecret(record) {
+  if (!record?.ciphertext || !record?.iv || !record?.tag) return ''
+  try {
+    const decipher = createDecipheriv('aes-256-gcm', encryptionKey(), Buffer.from(record.iv, 'base64'))
+    decipher.setAuthTag(Buffer.from(record.tag, 'base64'))
+    return Buffer.concat([decipher.update(Buffer.from(record.ciphertext, 'base64')), decipher.final()]).toString('utf8')
+  } catch {
+    return ''
+  }
+}
+
+const cleanField = (value, max = 200) => (typeof value === 'string' ? value.trim().slice(0, max) : '')
+
+/**
+ * Save credentials. Omit `key` to keep the stored secret while updating
+ * the endpoint or model preferences.
+ */
+export function saveAiCredentials(user, { key, baseUrl, model, visionModel } = {}) {
+  const db = loadDb()
+  const record = db.users.find((item) => item.id === user.id)
+  if (!record) return null
+  const previous = record.ai || {}
+  const secret = typeof key === 'string' && key.trim() ? key.trim() : null
+  const encrypted = secret ? encryptSecret(secret) : { iv: previous.iv, tag: previous.tag, ciphertext: previous.ciphertext }
+  record.ai = {
+    ...encrypted,
+    hint: secret ? maskSecret(secret) : previous.hint || '',
+    baseUrl: baseUrl !== undefined ? cleanField(baseUrl, 400) : previous.baseUrl || '',
+    model: model !== undefined ? cleanField(model, 200) : previous.model || '',
+    visionModel: visionModel !== undefined ? cleanField(visionModel, 200) : previous.visionModel || '',
+    updatedAt: new Date().toISOString(),
+  }
+  record.updatedAt = record.ai.updatedAt
+  persist(db)
+  return aiKeyStatus(record)
+}
+
+export function clearAiCredentials(user) {
+  const db = loadDb()
+  const record = db.users.find((item) => item.id === user.id)
+  if (!record) return null
+  delete record.ai
+  record.updatedAt = new Date().toISOString()
+  persist(db)
+  return aiKeyStatus(record)
+}
+
+/** Decrypted credentials, server-side use only. */
+export function getAiCredentials(user) {
+  const record = findUserById(user?.id)
+  const stored = record?.ai
+  return {
+    key: decryptSecret(stored),
+    baseUrl: stored?.baseUrl || '',
+    model: stored?.model || '',
+    visionModel: stored?.visionModel || '',
+  }
+}
+
+/** Safe shape for the client: no secret, just a hint. */
+export function aiKeyStatus(user) {
+  const record = typeof user === 'string' ? findUserById(user) : findUserById(user?.id)
+  const stored = record?.ai
+  return {
+    configured: Boolean(stored?.ciphertext),
+    hint: stored?.hint || '',
+    baseUrl: stored?.baseUrl || '',
+    model: stored?.model || '',
+    visionModel: stored?.visionModel || '',
+    updatedAt: stored?.updatedAt || null,
+  }
 }
 
 export function invalidateSessions(userId) {

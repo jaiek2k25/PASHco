@@ -1,0 +1,76 @@
+name: Deploy to GitHub Pages
+
+# Builds the Vite app and publishes dist/ as a static site.
+# Note: Pages is static-only, so accounts and the AI proxy are unavailable
+# there. Use the Node server (see DEPLOY.md) for the full product.
+
+on:
+  push:
+    branches:
+      - main
+      - arena/fa25e4b3-pashco
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Build
+        env:
+          # Project sites are served from /<repo>/, so the base path must match.
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_STATIC_HOST: 'true'
+        run: npm run build
+
+      # A static host has no rewrite rules. Serving index.html as 404 keeps
+      # deep links like /PASHco/tutor working, since the router reads the path.
+      - name: SPA fallback
+        run: cp dist/index.html dist/404.html && touch dist/.nojekyll
+
+      # Pages is probably configured to publish a branch, which serves the raw
+      # source index.html (it points at /src/main.jsx, so visitors get a blank
+      # page). The workflow token has pages:write, so flip the source to the
+      # artifact this job uploads. Safe to run every time.
+      - name: Point Pages at this workflow
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X PUT "repos/${{ github.repository }}/pages" -f build_type=workflow \
+            && echo "Pages source set to GitHub Actions."
+
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,203 @@
+# Deploying WeSolve
+
+WeSolve is a single Node service: it serves the built React app, proxies AI calls to NVIDIA,
+and stores accounts + synced workspaces on disk. That means it needs **a Node host with a
+persistent disk** — a purely static host (Netlify, GitHub Pages, Vercel static) will serve the
+pages but the AI proxy and accounts will not work.
+
+Three required settings:
+
+| Variable | Purpose |
+| --- | --- |
+| `NVIDIA_API_KEY` | **Not required.** Each user connects their own key in Settings. Add this plus `WESOLVE_SHARED_KEY=true` only if you want to pay for everyone. |
+| `WESOLVE_SESSION_SECRET` | 32+ random bytes that sign session cookies **and encrypt each account's saved AI key**. If unset, one is generated in the data directory — but set it explicitly so keys survive a redeploy. |
+| `WESOLVE_DATA_DIR` | Directory holding `accounts.json` + the session secret. Must be the mounted persistent disk. |
+
+Rotate `WESOLVE_SESSION_SECRET` to sign every existing session out.
+
+## GitHub Pages (static preview only)
+
+`https://jaiek2k25.github.io/PASHco/`
+
+Pages can be configured two ways, and this repo works with both:
+
+| Pages source | How the site gets built |
+| --- | --- |
+| **GitHub Actions** (preferred) | `.github/workflows/deploy-pages.yml` builds `dist/` and publishes it |
+| **Deploy from a branch** | `npm run build:pages` writes a committed `site/` bundle; the root `index.html` loads it when its dev entry is missing |
+
+The branch mode exists because a plain Vite repo cannot be served from source: the checked-in
+`index.html` points at `/src/main.jsx`, which a browser cannot execute. That is why the URL used
+to render a blank page. The shell now detects the failed request and boots `site/app.js` instead,
+and `404.html` keeps deep links working without a server.
+
+After changing app code, refresh the committed bundle:
+
+```bash
+npm run build:pages     # rebuilds site/ and 404.html
+```
+
+For a custom domain, set `PAGES_CNAME=wesolve.ai` when building so a `CNAME` file is written, and
+point the domain's DNS at GitHub Pages. Use `VITE_BASE_PATH=/` for a domain that serves from the
+root.
+
+**What works there:** the landing page, pricing, and the whole app in guest mode — solver,
+whiteboard, flashcards, quizzes, study packs — using the local engine, with work saved in the
+browser.
+
+**What cannot work there:** accounts and live AI. Pages serves files only; there is no Node
+process for `/api/auth` or `/api/ai`. A notice in the app says so.
+
+## Option 1 — Fly.io (recommended: persistent volume, cheap, always on)
+
+```bash
+# once
+fly launch --no-deploy --copy-config      # uses fly.toml + Dockerfile
+fly volumes create wesolve_data --size 1
+fly secrets set NVIDIA_API_KEY=nvapi-xxxxxxxx WESOLVE_SESSION_SECRET=$(openssl rand -hex 32)
+fly deploy
+fly open
+```
+
+`fly.toml` already sets `WESOLVE_DATA_DIR=/data` and mounts `wesolve_data` there. Redeploy with
+`fly deploy` after pulling changes.
+
+## Option 2 — Render (Blueprint)
+
+1. Push this repo to GitHub (already done).
+2. Render dashboard → **New → Blueprint** → select the repo. `render.yaml` is detected.
+3. Apply. Render generates `WESOLVE_SESSION_SECRET` for you.
+4. When the deploy finishes, open the URL Render shows (`https://<service>.onrender.com`).
+
+**No key is requested and none is needed**: each user pastes their own AI key in
+**Connect AI**, and the server makes the provider call.
+
+The blueprint uses `plan: free`, so the disk is ephemeral — accounts and synced
+workspaces are lost when the instance restarts or redeploys. To keep them, switch
+the service to `plan: starter` and uncomment the disk block at the bottom of
+`render.yaml` (mount path `/var/data`, then add
+`WESOLVE_DATA_DIR=/var/data` as an environment variable).
+
+### Check a Render deploy in 60 seconds
+
+1. Open `https://<service>.onrender.com/api/ai/health` → must return
+   `{"ok":true,"service":"wesolve",...}`.
+2. Open `https://<service>.onrender.com/` → the app loads; the composer badge
+   must **not** say *Offline engine*.
+3. Sign up with any email → you land back in the workspace, and
+   `<service>.onrender.com/api/auth/me` shows `{"user":{...}}`.
+4. **Connect AI → API key** → paste your provider key → **Test connection**.
+
+If `/api/ai/health` returns HTML or 404, the service was created as a **Static
+Site**; delete it and create a **Web Service** (or use the Blueprint), because a
+static host serves files only and cannot answer `/api/*`.
+
+A free instance sleeps after ~15 minutes idle and takes up to a minute to wake.
+The app shows *Connecting to your server…* and retries on its own.
+
+## Option 3 — Railway / any container host
+
+Railway → **New Project → Deploy from GitHub repo**, add a volume mounted at `/data`, then set
+the three variables. Railway builds the included `Dockerfile` automatically.
+
+Any other host works too:
+
+```bash
+npm ci && npm run build
+NVIDIA_API_KEY=... WESOLVE_SESSION_SECRET=... WESOLVE_DATA_DIR=/srv/wesolve node server/production.js
+```
+
+`PORT` and `HOST` are honoured if your platform assigns a port.
+
+## Option 4 — your own VPS
+
+```bash
+git clone https://github.com/jaiek2k25/PASHco.git wesolve && cd wesolve
+npm ci --no-audit --no-fund && npm run build
+sudo mkdir -p /srv/wesolve && sudo chown $USER /srv/wesolve
+sudo WESOLVE_DATA_DIR=/srv/wesolve NVIDIA_API_KEY=nvapi-... PORT=3000 node server/production.js
+```
+
+Put Caddy or Nginx in front for TLS:
+
+```
+wesolve.example.com {
+    reverse_proxy 127.0.0.1:3000
+}
+```
+
+TLS matters: session cookies are marked `Secure` automatically when `X-Forwarded-Proto: https`
+is present, and the browser will not send them over plain HTTP.
+
+## Post-deploy checklist
+
+- `https://your-domain/api/auth/me` → `{"user":null}`
+- Create an account, refresh, and confirm the avatar keeps you signed in
+- Solve one problem, sign out, sign back in — the solve should still be in History
+- Create an account, connect a key in **Settings → AI**, sign out and back in, and confirm the masked hint persists
+- Run a solve to confirm live AI is spending that account's key
+- Back up the disk: the only durable state is `accounts.json` in `WESOLVE_DATA_DIR`
+
+## Not supported on purpose
+
+- Static-only hosting (no accounts, no AI proxy)
+- Serverless/edge functions (accounts live on a disk)
+- Multiple replicas without shared storage — `accounts.json` is a single-writer file
+
+## AI runs on the Node server, never in the browser
+
+Every AI request is a `POST /api/ai` to the WeSolve server. The browser holds
+the key at most, forwards it to the server, and the server calls the provider.
+Nothing is sent from the page to NVIDIA, OpenRouter, or anyone else — so
+provider CORS rules, browser storage limits, and leaked keys stop mattering.
+
+### 1. Deploy the server (one click, free)
+
+| Host | What to do | Accounts |
+| --- | --- | --- |
+| Render | New → Blueprint → pick this repo. `render.yaml` is ready (`plan: free`) | reset on restart (ephemeral disk) |
+| Render + disk | Switch to `plan: starter`, attach the disk block in `render.yaml` | permanent |
+| Fly.io | `fly launch --no-deploy --copy-config`, create the volume, `fly deploy` | permanent |
+| Docker | `docker build -t wesolve . && docker run -p 3000:3000 -v wesolve-data:/data wesolve` | permanent |
+
+The server serves the built app *and* the API on the same URL, so the simplest
+result is to use that URL directly and skip GitHub Pages.
+
+### Where do I find my server URL?
+
+It is the address Render/Fly/Docker gives you after the deploy finishes — the
+same URL where the app itself opens, with no path:
+
+- Render: the service page header, e.g. `https://wesolve-xxxx.onrender.com`
+  (the app deployed *by* that service needs no URL at all — open it directly and
+  it talks to its own origin)
+- Fly: `fly status` → Hostname, e.g. `https://wesolve.fly.dev`
+- Docker/VPS: whatever you expose, e.g. `https://study.example.com`
+- Local: `http://localhost:3000`
+
+Sanity check: open `<url>/api/ai/health` in a browser. It must return
+`{"ok":true,"service":"wesolve",...}`. If it 404s, that address is not the
+WeSolve app; if it hangs, the deployment is not running.
+
+### 2. Point the static build at it (optional)
+
+The GitHub Pages build is only the interface. Open **Connect AI → WeSolve
+server**, paste the deployed URL, press **Connect**. From then on:
+
+- AI calls go `page → your server → provider`;
+- sign-in and account sync use that server (session cookie set for cross-site);
+- the status line in the app reads `SERVER CONNECTED`.
+
+Cross-origin access is controlled by `WESOLVE_ALLOWED_ORIGINS` on the server.
+The default already allows `https://jaiek2k25.github.io` plus localhost. Add
+your own origin if you fork the front end:
+
+```bash
+WESOLVE_ALLOWED_ORIGINS=https://jaiek2k25.github.io,https://your-frontend.example
+```
+
+### 3. Connect an AI key
+
+Each person uses their own key (NVIDIA, OpenRouter, Groq, Gemini, DeepSeek, or
+any OpenAI-compatible endpoint). Signed in, the key is stored encrypted on the
+account; otherwise it stays in the browser and is forwarded per request.

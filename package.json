@@ -1,0 +1,34 @@
+{
+  "name": "wesolve-ai-study-platform",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 3000",
+    "build": "vite build",
+    "build:pages": "vite build --config vite.pages.config.js && node scripts/static-pages.mjs",
+    "preview": "vite preview --host 0.0.0.0 --port 3000",
+    "lint": "eslint .",
+    "start": "node server/production.js",
+    "serve": "npm run build && npm start"
+  },
+  "dependencies": {
+    "jszip": "^3.10.2",
+    "lucide-react": "^0.468.0",
+    "mammoth": "^1.13.0",
+    "mathjs": "^14.2.1",
+    "pdfjs-dist": "^5.7.284",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.16",
+    "globals": "^15.14.0",
+    "vite": "^6.0.7"
+  }
+}

@@ -1,0 +1,35 @@
+# Fly.io deployment for WeSolve.
+#   fly launch --no-deploy --copy-config
+#   fly volumes create wesolve_data --size 1
+#   fly secrets set NVIDIA_API_KEY=nvapi-... WESOLVE_SESSION_SECRET=$(openssl rand -hex 32)
+#   fly deploy
+app = "wesolve"
+primary_region = "sin"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "3000"
+  HOST = "0.0.0.0"
+  WESOLVE_DATA_DIR = "/data"
+
+[[mounts]]
+  source = "wesolve_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 250
+    soft_limit = 200
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

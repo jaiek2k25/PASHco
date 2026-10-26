@@ -284,7 +284,7 @@ function LandingNav() {
 
 export default function Landing() {
   const navigate = useNavigate()
-  const { setAuthOpen, setServiceSettingsOpen } = useApp()
+  const { setServiceSettingsOpen } = useApp()
   const [slide, setSlide] = useState(2)
   const [featureTab, setFeatureTab] = useState('exams')
   const [testimonial, setTestimonial] = useState(0)
@@ -419,7 +419,7 @@ export default function Landing() {
 
         <section className="faq-section" id="faq">
           <div className="container faq-layout">
-            <div className="faq-intro"><div className="section-kicker">FAQ</div><h2>AI study tools, answered</h2><p>Everything you need to know before getting started with your personalized study workspace.</p><Button variant="outline" iconRight={ArrowRight} onClick={() => setAuthOpen(true)}>Talk to our AI tutor</Button></div>
+            <div className="faq-intro"><div className="section-kicker">FAQ</div><h2>AI study tools, answered</h2><p>Everything you need to know before getting started with your personalized study workspace.</p><Button variant="outline" iconRight={ArrowRight} onClick={() => goToWorkspace('/tutor')}>Talk to our AI tutor</Button></div>
             <div className="faq-list">{FAQS.map(([question, answer], index) => <div className={`faq-item ${faq === index ? 'open' : ''}`} key={question}><button onClick={() => setFaq(faq === index ? -1 : index)}><span>{question}</span><i>{faq === index ? '−' : '+'}</i></button>{faq === index && <p>{answer}</p>}</div>)}</div>
           </div>
         </section>

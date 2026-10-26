@@ -227,6 +227,7 @@ export default function SolverPage() {
   const [copied, setCopied] = useState(false)
   const [feedback, setFeedback] = useState(null)
   const [chatInput, setChatInput] = useState('')
+  const chatEndRef = useRef(null)
   const [chat, setChat] = useState([])
   const [videoPlaying, setVideoPlaying] = useState(false)
   const [videoStep, setVideoStep] = useState(0)
@@ -411,6 +412,11 @@ export default function SolverPage() {
       ? { ...item, answer, pending: false, offline: local, offlineReason: local ? reply.error : '' }
       : item))
   }
+
+  useEffect(() => {
+    // Bring the newest follow-up (and its answer) into view.
+    if (chat.length) chatEndRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [chat])
 
   const copySolution = async () => {
     if (!result) return
@@ -625,6 +631,7 @@ export default function SolverPage() {
               <div className="section-label"><span><Sparkles size={15} /> Recommended follow-ups</span></div>
               <div className="followup-suggestions">{result.followups.map((followup) => <button key={followup} onClick={() => askFollowup(followup)}>{followup}<ChevronRight size={15} /></button>)}</div>
               {chat.map((message) => <div className="chat-thread" key={message.id}><div className="chat-user"><span>You</span><p>{message.question}</p></div><div className={`chat-ai ${message.pending ? 'pending-answer' : ''}`}><span><Sparkles size={13} /> WeSolve {message.offline && <em className="chat-offline" title={message.offlineReason}>offline engine</em>}</span><p>{message.answer}</p><button onClick={() => { if (window.speechSynthesis) { const utterance = new SpeechSynthesisUtterance(message.answer); window.speechSynthesis.speak(utterance) } }}><Volume2 size={14} /> Read aloud</button></div></div>)}
+              <div ref={chatEndRef} />
               <form className="followup-input" onSubmit={(event) => { event.preventDefault(); askFollowup() }}><button type="button" onClick={() => toast('Attachments are available on the new question screen.')}><Plus size={18} /></button><input value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="Ask follow-up…" /><button type="submit" aria-label="Send follow-up"><Send size={17} /></button></form>
             </div>
           </div>

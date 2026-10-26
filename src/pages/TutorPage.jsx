@@ -8,7 +8,8 @@ import ToolTabs from '../components/ToolTabs'
 import { Badge, Button, Modal, ProgressBar } from '../components/Common'
 import { useApp } from '../context/AppContext'
 import { createId, downloadText, safeFileName, tutorLessons, tutorWhiteboards } from '../lib/intelligence'
-import { aiFallbackReason, aiLesson, aiTutorAnswer, readImageText } from '../lib/aiClient'
+import { aiFallbackReason, aiLesson, aiTutorAnswer, providerNeedsServer, readImageText } from '../lib/aiClient'
+import { getServiceSettings } from '../lib/serviceSettings'
 import { extractDocumentText } from '../lib/fileExtract'
 
 const BOARD_W = 1000
@@ -233,7 +234,20 @@ function BoardContent({ content, progress, stepLabel }) {
 }
 
 export default function TutorPage() {
-  const { toast, state } = useApp()
+  const { toast, state, serviceSettingsVersion, setServiceSettingsOpen } = useApp()
+  const aiSettings = useMemo(() => getServiceSettings(), [serviceSettingsVersion])
+  const aiReady = Boolean(aiSettings.nvidiaApiKey)
+  const aiProvider = useMemo(() => {
+    if (!aiSettings.nvidiaBaseUrl) return 'NVIDIA'
+    try {
+      return new URL(aiSettings.nvidiaBaseUrl).host
+    } catch {
+      return 'custom provider'
+    }
+  }, [aiSettings.nvidiaBaseUrl])
+  const aiReason = aiReady && providerNeedsServer(aiSettings.nvidiaBaseUrl)
+    ? `${aiProvider} blocks browser requests, so answers use the built-in engine`
+    : aiFallbackReason()
   const [lessonId, setLessonId] = useState(tutorLessons[0].id)
   const [step, setStep] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -267,6 +281,8 @@ export default function TutorPage() {
   const [creating, setCreating] = useState(false)
 
   const studioRef = useRef(null)
+  const chatThreadRef = useRef(null)
+  const chatEndRef = useRef(null)
   const canvasRef = useRef(null)
   const pointer = useRef({ active: false, points: [] })
   const frameRef = useRef(null)
@@ -528,6 +544,12 @@ export default function TutorPage() {
     setStrokes([])
     setRedone([])
   }
+
+  useEffect(() => {
+    // Keep the newest message — and the composer under it — in view.
+    const thread = chatThreadRef.current
+    if (thread) thread.scrollTop = thread.scrollHeight
+  }, [chat, dockTab, asking])
 
   const toggleFullscreen = async () => {
     try {
@@ -917,16 +939,19 @@ export default function TutorPage() {
 
             {dockTab === 'ask' && (
               <div className="wb-dock-body wb-chat">
-                <div className="wb-chat-thread">
+                <div className="wb-chat-thread" ref={chatThreadRef}>
                   {chat.length === 0 ? (
                     <div className="wb-chat-empty">
                       <span><Sparkles size={20} /></span>
-                      <h3>Ask about this step</h3>
-                      <p>I can simplify the explanation, work another example, or check your reasoning.</p>
+                      <h3>Ask me anything</h3>
+                      <p>Type your own question below — anything about this lesson, or a topic you want explained. I can simplify, give another example, or check your reasoning.</p>
                       <div className="wb-suggestions">
                         {['Explain this more simply', 'Show another example', 'Why does this step work?'].map((question) => (
                           <button key={question} onClick={() => askTutor(question)}>{question}</button>
                         ))}
+                        <button className="wb-suggestion-new" onClick={() => setCreateOpen(true)}>
+                          <Wand2 size={13} /> Teach me a new topic on the board
+                        </button>
                       </div>
                     </div>
                   ) : chat.map((item) => (
@@ -939,17 +964,16 @@ export default function TutorPage() {
                       </div>
                     </div>
                   ))}
+                  <div ref={chatEndRef} />
                 </div>
                 {resumeHint && (
                   <button className="wb-resume" onClick={() => { setPlaying(true); setResumeHint(false) }}>
                     <Play size={13} /> Resume the lesson from here
                   </button>
                 )}
-                <form className="wb-composer" onSubmit={(event) => { event.preventDefault(); askTutor() }}>
-                  <input value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder={listening ? 'Listening…' : 'Ask a follow-up…'} />
-                  <button type="button" className={`wb-mic ${listening ? 'listening' : ''}`} onClick={toggleMic} aria-label="Ask by voice"><Mic size={16} /></button>
-                  <button type="submit" disabled={!chatInput.trim() || asking} aria-label="Send"><Send size={16} /></button>
-                </form>
+                {chat.length > 0 && (
+                  <button className="wb-chat-clear" onClick={() => setChat([])}><Trash2 size={13} /> New conversation</button>
+                )}
               </div>
             )}
 
@@ -971,6 +995,32 @@ export default function TutorPage() {
                 </div>
               </div>
             )}
+
+            <div className="wb-askbar">
+              <form
+                className="wb-composer"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  setDockTab('ask')
+                  askTutor()
+                }}
+              >
+                <input
+                  value={chatInput}
+                  onChange={(event) => setChatInput(event.target.value)}
+                  onFocus={() => setDockTab('ask')}
+                  placeholder={listening ? 'Listening…' : 'Ask your tutor a question…'}
+                  aria-label="Ask your tutor a question"
+                />
+                <button type="button" className={`wb-mic ${listening ? 'listening' : ''}`} onClick={toggleMic} aria-label="Ask by voice"><Mic size={16} /></button>
+                <button type="submit" disabled={!chatInput.trim() || asking} aria-label="Send question"><Send size={16} /></button>
+              </form>
+              <p className="wb-askbar-hint">
+                {aiReady
+                  ? <>Live AI · {aiProvider}</>
+                  : <>Offline engine — {aiReason} <button type="button" onClick={() => setServiceSettingsOpen(true)}>Connect AI</button></>}
+              </p>
+            </div>
           </aside>
         </div>
       </div>
@@ -1031,13 +1081,30 @@ export default function TutorPage() {
   )
 }
 
+/**
+ * The offline tutor. It works only from the current lesson, so every answer
+ * names that limit instead of pretending to know the wider subject.
+ */
 function buildLocalTutorAnswer(question, lesson, step, content) {
   const lower = question.toLowerCase()
-  if (lower.includes('example')) {
-    return `Here is another example in the same style: start from ${content.lines[0] || step.board}, then repeat the same rule. ${step.note} Write the substitution first, then simplify one line at a time — that keeps the signs straight.`
+  const board = content.lines.filter(Boolean)
+  const lead = board[0] || step.board
+  const note = step.note || ''
+
+  if (/\bexample\b|another one|show me one/.test(lower)) {
+    return `Another example, same method as “${lesson.title}”. The board is on: ${lead}. ${note} Change one number, then repeat the lines in the same order — if the last line still checks out, the method held.`
   }
-  if (lower.includes('why')) {
-    return `Because ${step.note.toLowerCase()} In “${content.lines[0] || step.board}”, each line is just a reversible step, so nothing about the problem changes except its form.`
+  if (/\bwhy\b|how come|reason|proof/.test(lower)) {
+    return `Why this step is allowed: ${note} “${lead}” keeps both sides in the same relationship, so the answer cannot change — only the form does. Nothing new is invented at this line.`
   }
-  return `Let's slow it down. ${content.lines.join('. ')}. ${step.note} If it still feels stuck, tell me which line stops making sense and we can redo only that one.`
+  if (/simpl|simple|easier|plain|don'?t (get|understand)|confus|lost/.test(lower)) {
+    return `Simplest version: ${lead}. ${note} Ignore the rest of the board for a second — read that line aloud twice. If any symbol is unclear, ask me what it means and we will name it before moving on.`
+  }
+  if (/check|verify|right|correct|answer/.test(lower)) {
+    return `Check it by putting the answer back into the original line “${lead}” and seeing whether both sides match. ${note} When they do not match, it is almost always a sign or an order-of-operations slip.`
+  }
+  if (/practice|quiz|test me|drill/.test(lower)) {
+    return `Practice on this board: cover the last line of “${lead}” and redo it yourself, then check against the board. ${note} Tell me the number you got and I will compare it.`
+  }
+  return `You asked: “${question}”. The board is on “${lead}” — ${note || 'this step'}. Everything I can say comes from this lesson, so I cannot go beyond it; connect an AI key and I will answer the full question in your own context.`
 }

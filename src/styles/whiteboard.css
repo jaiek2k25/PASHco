@@ -772,3 +772,57 @@
 .wb-upload:hover { border-color: #b9a9ff; background: #f6f3ff; }
 .wb-upload input { display: none; }
 .wb-upload svg { color: var(--primary); }
+
+/* Always-visible ask bar: a new message must never be hidden behind a tab. */
+.wb-askbar {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 5px;
+  padding: 9px 11px 10px;
+  border-top: 1px solid #f0eff6;
+  background: #fff;
+}
+
+.wb-askbar .wb-composer { border-color: #e3e0f2; background: #fbfaff; }
+.wb-askbar .wb-composer:focus-within { border-color: #b9a9ff; box-shadow: 0 0 0 3px rgba(108, 85, 246, .1); }
+
+.wb-askbar-hint {
+  margin: 0;
+  font-size: 9.5px;
+  line-height: 1.4;
+  color: var(--muted-2);
+  padding-left: 2px;
+}
+
+.wb-askbar-hint button {
+  border: 0;
+  background: none;
+  color: var(--primary);
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 0 0 0 4px;
+  cursor: pointer;
+}
+
+.wb-askbar-hint button:hover { text-decoration: underline; }
+
+/* The thread scrolls; the composer stays put. */
+.wb-chat { overflow: hidden; }
+.wb-chat .wb-chat-thread { overflow-y: auto; min-height: 0; padding-right: 2px; }
+.wb-chat-clear {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--muted);
+  background: #f6f5fb;
+  border-radius: 8px;
+  padding: 5px 8px;
+}
+.wb-chat-clear:hover { color: #b4384d; background: #fdeef0; }
+
+@media print { .wb-askbar { display: none !important; } }
+.wb-suggestions button.wb-suggestion-new { display: flex; align-items: center; justify-content: center; gap: 6px; border-style: dashed; border-color: #cfc6f7; color: #5b45e0; font-weight: 700; }
+.wb-suggestions button.wb-suggestion-new:hover { background: #f2eeff; }

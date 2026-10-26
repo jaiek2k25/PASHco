@@ -19,7 +19,9 @@ function normalize(url) {
   try {
     const parsed = new URL(value)
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return ''
-    return parsed.origin + parsed.pathname.replace(/\/+$/, '')
+    // Accept a pasted ".../api" or trailing slash without breaking the paths.
+    const path = parsed.pathname.replace(/\/+$/, '').replace(/\/api$/i, '')
+    return parsed.origin + path
   } catch {
     return ''
   }

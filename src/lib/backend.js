@@ -45,11 +45,26 @@ async function requestProbe() {
       signal: controller?.signal,
     }))
     // A static host answers with its 404 HTML page, not JSON.
-    if (!response.ok) return { available: false, info: null }
+    if (!response.ok) {
+      return {
+        available: false,
+        info: null,
+        error: response.status === 404
+          ? 'That address answered, but not as a WeSolve server (no /api/ai/health). Check you used the app URL, not a docs or repo link.'
+          : `That server answered with HTTP ${response.status}.`,
+      }
+    }
     const info = await response.json().catch(() => null)
-    return { available: Boolean(info?.ok), info }
+    if (!info?.ok) {
+      return { available: false, info: null, error: 'That address is not a WeSolve server (health check did not answer correctly).' }
+    }
+    return { available: true, info, error: '' }
   } catch {
-    return { available: false, info: null }
+    return {
+      available: false,
+      info: null,
+      error: 'Nothing answered at that address. Check the URL, make sure the deployment is running, and allow this site in WESOLVE_ALLOWED_ORIGINS on the server.',
+    }
   } finally {
     if (timer) clearTimeout(timer)
   }
@@ -61,8 +76,8 @@ export function probeBackend({ force = false } = {}) {
   if (fresh && !force) return Promise.resolve(state)
   if (inflight) return inflight
   const server = getServerUrl()
-  inflight = requestProbe().then(({ available, info }) => {
-    publish({ checked: true, available, checkedAt: Date.now(), info, server })
+  inflight = requestProbe().then(({ available, info, error }) => {
+    publish({ checked: true, available, checkedAt: Date.now(), info, server, error: available ? '' : error || '' })
     inflight = null
     return state
   })
@@ -81,12 +96,12 @@ export function isStaticHost() {
 
 export function markBackendMissing() {
   if (!state.available) return
-  publish({ checked: true, available: false, checkedAt: Date.now(), info: null, server: state.server })
+  publish({ checked: true, available: false, checkedAt: Date.now(), info: null, server: state.server, error: 'The server stopped answering.' })
 }
 
 /** Forget the cached answer, e.g. after the user enters a server URL. */
 export function resetBackendProbe() {
-  state = { checked: false, available: false, checkedAt: 0, info: null, server: getServerUrl() }
+  state = { checked: false, available: false, checkedAt: 0, info: null, server: getServerUrl(), error: '' }
   inflight = null
   publish(state)
 }

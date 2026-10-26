@@ -31,6 +31,8 @@ export default function ServiceSettingsModal() {
   const [serverInput, setServerInput] = useState(getServerUrl)
   const [serverBusy, setServerBusy] = useState(false)
   const [serverState, setServerState] = useState(null)
+  const [serverError, setServerError] = useState('')
+  const [helpOpen, setHelpOpen] = useState(false)
 
   const loadAccount = useCallback(async (signedIn) => {
     if (!signedIn) {
@@ -45,15 +47,17 @@ export default function ServiceSettingsModal() {
     }
   }, [])
 
-  // Load the form only when the dialog opens. Auth status often resolves a
-  // moment later; re-running this then would erase what the user is typing.
+  // Load the form only when the dialog opens. Any later settings refresh
+  // (saving a key, reconnecting a server) must not wipe the field or the
+  // result the user is looking at.
   useEffect(() => {
     if (!serviceSettingsOpen) return
     setSettings(getServiceSettings())
     setServerInput(getServerUrl())
     setStatus(null)
     setServerState(null)
-  }, [serviceSettingsOpen, serviceSettingsVersion])
+    setServerError('')
+  }, [serviceSettingsOpen])
 
   // Keep the ownership panel and status in sync with sign-in state.
   useEffect(() => {
@@ -68,6 +72,7 @@ export default function ServiceSettingsModal() {
       resetBackendProbe()
       const result = await probeBackend({ force: true })
       setServerState(result.available)
+      setServerError(result.available ? '' : result.error || '')
       if (result.available) {
         toast(url || isRemoteServer()
           ? 'Connected to your WeSolve server. AI and accounts now run through it.'
@@ -213,6 +218,35 @@ export default function ServiceSettingsModal() {
             </div>
             <CloudCog size={19} />
           </div>
+          <div className="server-help-toggle">
+            <button type="button" className="link-button" onClick={() => setHelpOpen((value) => !value)}>
+              {helpOpen ? 'Hide' : 'Where do I get this URL?'}
+            </button>
+          </div>
+
+          {helpOpen && (
+            <div className="server-help">
+              <p>The server URL is the address of this same app deployed as a Node server. That server runs the AI and stores the accounts; the Pages site is only the interface.</p>
+              <ol>
+                <li>
+                  <strong>Deploy it free on Render</strong> — open{' '}
+                  <a href="https://render.com/deploy?repo=https://github.com/jaiek2k25/PASHco" target="_blank" rel="noreferrer">render.com/deploy</a>,
+                  pick this repo, and approve. When it goes live Render shows the URL at the top of the service page,
+                  e.g. <code>https://wesolve-xxxx.onrender.com</code>. Paste that here.
+                </li>
+                <li>
+                  <strong>Or run it yourself</strong> — <code>npm install &amp;&amp; npm run build &amp;&amp; npm start</code>, then use{' '}
+                  <code>http://localhost:3000</code>.
+                </li>
+                <li>
+                  <strong>Already deployed?</strong> It is the URL where the app opens, with no path — not the GitHub repo link.
+                  Check it answers <code>/api/ai/health</code>.
+                </li>
+              </ol>
+              <p className="server-help-note">Use the server URL directly in the browser if you can: it serves the interface and the API together, and sign-in works without any cross-site setup.</p>
+            </div>
+          )}
+
           <div className="server-row">
             <label className="field-label">
               <span>Server URL</span>
@@ -247,7 +281,7 @@ export default function ServiceSettingsModal() {
             )}
           </div>
           {serverState === false && (
-            <p className="modal-hint error-hint">That URL did not answer <code>/api/ai/health</code>. Check the deployment, and add this site’s origin to <code>WESOLVE_ALLOWED_ORIGINS</code> on the server.</p>
+            <p className="modal-hint error-hint">{serverError || 'That URL did not answer /api/ai/health.'}</p>
           )}
         </div>
 

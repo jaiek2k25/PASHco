@@ -201,5 +201,21 @@ answered; when the built-in engine answers, the app says so with a toast and a
 badge, and the reason (no server, no key, rejected key, provider error) is
 included.
 
-See [`DEPLOY.md`](DEPLOY.md) for hosting. Deploy the Node app (Render/Fly/Docker)
-and use its URL directly, or point the Pages build at it from `Connect AI`.
+### Where the server URL comes from
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/jaiek2k25/PASHco)
+
+AI and accounts run on the Node app, not in the page. Deploy it once and Render
+gives you the URL to paste into **Connect AI → WeSolve server**:
+
+1. Open the deploy link above, pick this repo, approve. Render builds it from
+   `render.yaml` (free plan works).
+2. When the service is live, copy the URL at the top of the Render page —
+   `https://wesolve-xxxx.onrender.com`.
+3. Paste it into **Connect AI → WeSolve server → Connect**.
+
+No deployment? `npm install && npm run build && npm start` serves both the app
+and the API at `http://localhost:3000`, which is a valid server URL too.
+
+The URL is the running app (it answers `/api/ai/health`) — not the GitHub repo
+page. See [`DEPLOY.md`](DEPLOY.md) for Fly.io, Docker, and the origin allow-list.

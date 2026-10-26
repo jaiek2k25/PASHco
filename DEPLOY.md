@@ -139,6 +139,20 @@ provider CORS rules, browser storage limits, and leaked keys stop mattering.
 The server serves the built app *and* the API on the same URL, so the simplest
 result is to use that URL directly and skip GitHub Pages.
 
+### Where do I find my server URL?
+
+It is the address Render/Fly/Docker gives you after the deploy finishes — the
+same URL where the app itself opens, with no path:
+
+- Render: the service page header, e.g. `https://wesolve-xxxx.onrender.com`
+- Fly: `fly status` → Hostname, e.g. `https://wesolve.fly.dev`
+- Docker/VPS: whatever you expose, e.g. `https://study.example.com`
+- Local: `http://localhost:3000`
+
+Sanity check: open `<url>/api/ai/health` in a browser. It must return
+`{"ok":true,"service":"wesolve",...}`. If it 404s, that address is not the
+WeSolve app; if it hangs, the deployment is not running.
+
 ### 2. Point the static build at it (optional)
 
 The GitHub Pages build is only the interface. Open **Connect AI → WeSolve

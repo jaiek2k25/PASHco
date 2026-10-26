@@ -8,7 +8,7 @@ import ToolTabs from '../components/ToolTabs'
 import { Badge, Button, Modal, ProgressBar } from '../components/Common'
 import { useApp } from '../context/AppContext'
 import { createId, downloadText, safeFileName, tutorLessons, tutorWhiteboards } from '../lib/intelligence'
-import { aiFallbackReason, aiLesson, aiTutorAnswer, providerNeedsServer, readImageText } from '../lib/aiClient'
+import { aiFallbackReason, aiLesson, aiTutorAnswer, readImageText } from '../lib/aiClient'
 import { getServiceSettings } from '../lib/serviceSettings'
 import { extractDocumentText } from '../lib/fileExtract'
 
@@ -234,20 +234,14 @@ function BoardContent({ content, progress, stepLabel }) {
 }
 
 export default function TutorPage() {
-  const { toast, state, serviceSettingsVersion, setServiceSettingsOpen } = useApp()
+  const { toast, state, serviceSettingsVersion, setServiceSettingsOpen, hasBackend } = useApp()
   const aiSettings = useMemo(() => getServiceSettings(), [serviceSettingsVersion])
   const aiReady = Boolean(aiSettings.nvidiaApiKey)
-  const aiProvider = useMemo(() => {
-    if (!aiSettings.nvidiaBaseUrl) return 'NVIDIA'
-    try {
-      return new URL(aiSettings.nvidiaBaseUrl).host
-    } catch {
-      return 'custom provider'
-    }
-  }, [aiSettings.nvidiaBaseUrl])
-  const aiReason = aiReady && providerNeedsServer(aiSettings.nvidiaBaseUrl)
-    ? `${aiProvider} blocks browser requests, so answers use the built-in engine`
-    : aiFallbackReason()
+  const aiReason = !hasBackend
+    ? 'no WeSolve server connected, so answers use the built-in engine'
+    : !aiReady
+      ? 'no AI key connected, so answers use the built-in engine'
+      : aiFallbackReason()
   const [lessonId, setLessonId] = useState(tutorLessons[0].id)
   const [step, setStep] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -770,7 +764,9 @@ export default function TutorPage() {
                 </button>
               </div>
             )}
-            <Badge tone="purple">NEW</Badge>
+            <Badge tone={lesson.source === 'nvidia' ? 'green' : 'gray'}>
+              {lesson.source === 'nvidia' ? 'AI LESSON' : lesson.custom ? 'OFFLINE OUTLINE' : 'BUILT-IN LESSON'}
+            </Badge>
           </div>
 
           <div className="wb-header-actions">
@@ -1016,9 +1012,9 @@ export default function TutorPage() {
                 <button type="submit" disabled={!chatInput.trim() || asking} aria-label="Send question"><Send size={16} /></button>
               </form>
               <p className="wb-askbar-hint">
-                {aiReady
-                  ? <>Live AI · {aiProvider}</>
-                  : <>Offline engine — {aiReason} <button type="button" onClick={() => setServiceSettingsOpen(true)}>Connect AI</button></>}
+                {aiReady && hasBackend
+                  ? <>Live AI · answered by your WeSolve server</>
+                  : <>Offline engine — {aiReason} <button type="button" onClick={() => setServiceSettingsOpen(true)}>{hasBackend ? 'Connect AI' : 'Connect server'}</button></>}
               </p>
             </div>
           </aside>
@@ -1055,7 +1051,7 @@ export default function TutorPage() {
                 : 'Upload a PDF, Word, PowerPoint, Excel, TXT, or image'}</span>
             <input type="file" accept=".pdf,.docx,.pptx,.xlsx,.txt,.md,.markdown,.csv,.tsv,.json,.html,.htm,.rtf,.tex,image/*" onChange={(event) => { readMaterialFile(event.target.files?.[0]); event.target.value = '' }} />
           </label>
-          <p className="modal-hint">With an AI key connected, the lesson is written by AI. Without one, the built-in engine builds the board from your question — and the lesson is labelled that way.</p>
+          <p className="modal-hint">Your WeSolve server writes the lesson with your AI key. Without a server or key, the board builds a clearly-labelled offline outline from your question — paste notes above and it teaches those instead.</p>
         </div>
       </Modal>
 

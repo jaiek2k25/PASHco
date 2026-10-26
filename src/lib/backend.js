@@ -6,10 +6,12 @@
  * with "Request failed (404)" — it detects the situation once and adapts.
  */
 
-const PROBE_TIMEOUT_MS = 4000
+import { apiInit, apiUrl, getServerUrl } from './apiBase'
+
+const PROBE_TIMEOUT_MS = 6000
 const CACHE_MS = 60_000
 
-let state = { checked: false, available: false, checkedAt: 0, info: null }
+let state = { checked: false, available: false, checkedAt: 0, info: null, server: '' }
 let inflight = null
 const listeners = new Set()
 
@@ -37,12 +39,11 @@ async function requestProbe() {
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
   const timer = controller ? setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS) : null
   try {
-    const response = await fetch('/api/ai/health', {
+    const response = await fetch(apiUrl('/api/ai/health'), apiInit({
       method: 'GET',
       cache: 'no-store',
-      credentials: 'same-origin',
       signal: controller?.signal,
-    })
+    }))
     // A static host answers with its 404 HTML page, not JSON.
     if (!response.ok) return { available: false, info: null }
     const info = await response.json().catch(() => null)
@@ -59,8 +60,9 @@ export function probeBackend({ force = false } = {}) {
   const fresh = state.checked && Date.now() - state.checkedAt < CACHE_MS
   if (fresh && !force) return Promise.resolve(state)
   if (inflight) return inflight
+  const server = getServerUrl()
   inflight = requestProbe().then(({ available, info }) => {
-    publish({ checked: true, available, checkedAt: Date.now(), info })
+    publish({ checked: true, available, checkedAt: Date.now(), info, server })
     inflight = null
     return state
   })
@@ -79,5 +81,12 @@ export function isStaticHost() {
 
 export function markBackendMissing() {
   if (!state.available) return
-  publish({ checked: true, available: false, checkedAt: Date.now(), info: null })
+  publish({ checked: true, available: false, checkedAt: Date.now(), info: null, server: state.server })
+}
+
+/** Forget the cached answer, e.g. after the user enters a server URL. */
+export function resetBackendProbe() {
+  state = { checked: false, available: false, checkedAt: 0, info: null, server: getServerUrl() }
+  inflight = null
+  publish(state)
 }

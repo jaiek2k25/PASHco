@@ -25,10 +25,9 @@ export default function StaticHostNotice() {
     <div className="static-notice" role="status">
       <Info size={16} />
       <p>
-        <strong>Static preview.</strong> Accounts here live in this browser, and your work is saved per
-        profile on this device. Live AI needs a provider that accepts browser requests — OpenRouter,
-        Groq, or Gemini in <em>Connect AI</em> — or the Node deployment in <code>DEPLOY.md</code> for
-        NVIDIA keys and cross-device sync.
+        <strong>Static preview.</strong> This page is only the interface: AI and accounts run on the
+        WeSolve Node server. Open <em>Connect AI</em> and paste your server URL (see <code>DEPLOY.md</code>)
+        to get live AI answers and synced accounts. Until then, work is saved per profile in this browser.
       </p>
       <button
         type="button"

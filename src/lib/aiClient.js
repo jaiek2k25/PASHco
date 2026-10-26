@@ -6,7 +6,8 @@ import {
   solveProblem,
 } from './intelligence'
 import { getServiceSettings } from './serviceSettings'
-import { getBackendState, markBackendMissing, probeBackend } from './backend'
+import { markBackendMissing, probeBackend } from './backend'
+import { apiInit, apiUrl, getServerUrl } from './apiBase'
 
 const MODEL_LABELS = ['NVIDIA reasoning', 'Symbolic verification', 'Context review']
 
@@ -41,6 +42,7 @@ export function aiFallbackReason() {
     UPSTREAM_RATE_LIMITED: 'The AI provider is rate limiting right now.',
     BAD_BASE_URL: 'The API base URL is not valid.',
     NETWORK_ERROR: 'The AI provider could not be reached.',
+    NO_SERVER: 'No WeSolve server is connected, and AI only runs on the server.',
     TIMEOUT: 'The AI provider took too long to answer.',
   }
   return messages[lastAiError.code] || lastAiError.message || 'The AI provider is unavailable.'
@@ -70,44 +72,6 @@ const DIRECT_PROMPTS = {
 }
 
 /** Sensible default models per provider, so nobody has to guess slugs. */
-const PROVIDER_DEFAULTS = [
-  { match: 'integrate.api.nvidia.com', base: 'https://integrate.api.nvidia.com/v1', text: 'meta/llama-3.3-70b-instruct', vision: 'meta/llama-3.2-11b-vision-instruct' },
-  { match: 'openrouter.ai', text: 'meta-llama/llama-3.3-70b-instruct', vision: 'meta-llama/llama-3.2-11b-vision-instruct' },
-  { match: 'api.groq.com', text: 'llama-3.3-70b-versatile', vision: 'meta-llama/llama-4-scout-17b-16e-instruct' },
-  { match: 'api.deepseek.com', text: 'deepseek-chat', vision: '' },
-  { match: 'generativelanguage.googleapis.com', text: 'gemini-2.0-flash', vision: 'gemini-2.0-flash' },
-  { match: 'api.openai.com', text: 'gpt-4o-mini', vision: 'gpt-4o-mini' },
-  { match: 'api.mistral.ai', text: 'mistral-large-latest', vision: 'pixtral-12b-2409' },
-  { match: 'api.together.xyz', text: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', vision: '' },
-]
-
-function providerFor(baseUrl) {
-  // An empty base URL means the built-in NVIDIA endpoint.
-  if (!baseUrl) return PROVIDER_DEFAULTS[0]
-  return PROVIDER_DEFAULTS.find((item) => baseUrl.includes(item.match)) || null
-}
-
-/**
- * Providers known to refuse browser requests (no CORS headers). On the static
- * build these only work through a proxy URL, so the UI says so up front.
- */
-export function providerNeedsServer(baseUrl) {
-  if (!baseUrl) return true
-  return /integrate\.api\.nvidia\.com|api\.deepseek\.com|api\.together\.xyz/.test(baseUrl)
-}
-
-function providerLabel(baseUrl) {
-  const provider = providerFor(baseUrl)
-  if (!provider) return (() => {
-    try {
-      return new URL(baseUrl).host
-    } catch {
-      return 'the AI provider'
-    }
-  })()
-  return provider.match
-}
-
 function aiError(message, code, extra = {}) {
   const error = new Error(message)
   error.code = code
@@ -115,125 +79,36 @@ function aiError(message, code, extra = {}) {
   return error
 }
 
-async function directNvidiaRequest(task, payload, settings) {
-  const isVision = task === 'ocr'
-  const provider = providerFor(settings.nvidiaBaseUrl)
-  const baseUrl = (settings.nvidiaBaseUrl || provider?.base || 'https://integrate.api.nvidia.com/v1').replace(/\/+$/, '')
-  const label = providerLabel(baseUrl)
-  const model = isVision
-    ? settings.nvidiaVisionModel || provider?.vision || ''
-    : settings.nvidiaModel || provider?.text || ''
-
-  if (!model) {
-    throw aiError(
-      `Add a model name for ${label} in the AI settings — this endpoint does not have a default.`,
-      'MODEL_REQUIRED',
-    )
-  }
-
-  const content = isVision
-    ? [
-        { type: 'text', text: DIRECT_PROMPTS.ocr },
-        { type: 'image_url', image_url: { url: payload?.image } },
-      ]
-    : `${DIRECT_PROMPTS[task]}\n\nDATA:\n${JSON.stringify(payload || {}).slice(0, 30000)}`
-
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
-  const timer = controller ? setTimeout(() => controller.abort(), 90_000) : null
-  let response
-  try {
-    response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${settings.nvidiaApiKey}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      signal: controller?.signal,
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: 'You are WeSolve, an accurate study assistant. Return only valid JSON.' },
-          { role: 'user', content },
-        ],
-        temperature: 0.3,
-        top_p: 0.85,
-        max_tokens: 4096,
-        stream: false,
-      }),
-    })
-  } catch (error) {
-    if (error?.name === 'AbortError') {
-      throw aiError(`${label} did not answer within 90 seconds.`, 'TIMEOUT')
-    }
-    throw aiError(
-      `Your browser could not reach ${label}. Browsers can only call providers that allow cross-origin requests; use a provider that does (OpenRouter, Groq, Gemini) or a proxy URL.`,
-      'NETWORK_ERROR',
-    )
-  } finally {
-    if (timer) clearTimeout(timer)
-  }
-
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}))
-    const detail = body?.error?.message || body?.detail || body?.message || ''
-    if (response.status === 401) {
-      throw aiError(detail || `${label} rejected this API key.`, 'INVALID_KEY', { status: 401 })
-    }
-    if (response.status === 403) {
-      throw aiError(detail || `This key has no access to ${model} on ${label}.`, 'NO_INFERENCE_ACCESS', { status: 403 })
-    }
-    if (response.status === 429) {
-      throw aiError(detail || `${label} is rate limiting requests. Wait a moment and try again.`, 'RATE_LIMITED', { status: 429 })
-    }
-    if (response.status === 404) {
-      throw aiError(detail || `${label} does not recognise the model “${model}”.`, 'BAD_MODEL', { status: 404 })
-    }
-    throw aiError(detail || `${label} returned HTTP ${response.status}.`, 'UPSTREAM_ERROR', { status: response.status })
-  }
-
-  const result = await response.json().catch(() => null)
-  const text = result?.choices?.[0]?.message?.content
-  if (!text) throw aiError(`${label} returned an empty response.`, 'EMPTY_RESPONSE')
-  const cleaned = String(text).replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
-  const start = cleaned.indexOf('{')
-  const end = cleaned.lastIndexOf('}')
-  if (start === -1 || end <= start) {
-    throw aiError(`${label} answered, but not in the JSON format WeSolve needs.`, 'BAD_FORMAT')
-  }
-  try {
-    return JSON.parse(cleaned.slice(start, end + 1))
-  } catch {
-    throw aiError(`${label} answered with malformed JSON.`, 'BAD_FORMAT')
-  }
-}
-
 export async function getAiStatus() {
   const settings = getServiceSettings()
   const backend = await probeBackend().catch(() => ({ available: false, checked: true }))
   if (!backend.available) {
+    // Nothing here can answer: AI is written by the server, not the page.
     return {
-      configured: Boolean(settings.nvidiaApiKey),
-      keySource: settings.nvidiaApiKey ? 'browser' : 'none',
+      configured: false,
+      keySource: 'none',
       hint: '',
-      model: settings.nvidiaModel || 'provider default',
-      visionModel: settings.nvidiaVisionModel || '',
-      baseUrl: settings.nvidiaBaseUrl || '',
-      provider: settings.nvidiaBaseUrl || 'direct browser call',
+      model: '',
+      visionModel: '',
+      baseUrl: '',
+      provider: '',
       signedIn: false,
       accountKeySaved: false,
       sharedKeyAvailable: false,
-      staticHost: true,
+      needsServer: true,
+      server: getServerUrl(),
+      staticHost: !getServerUrl(),
     }
   }
-  const headers = {}
+  const headers = { 'X-Requested-With': 'wesolve' }
   if (settings.nvidiaApiKey) headers['x-ai-api-key'] = settings.nvidiaApiKey
   if (settings.nvidiaBaseUrl) headers['x-ai-base-url'] = settings.nvidiaBaseUrl
   try {
-    const response = await fetch('/api/ai/status', { headers, cache: 'no-store' })
-    return await parseResponse(response).catch(() => ({ configured: false, keySource: 'none' }))
+    const response = await fetch(apiUrl('/api/ai/status'), apiInit({ headers, cache: 'no-store' }))
+    const data = await parseResponse(response)
+    return { ...data, server: getServerUrl() }
   } catch {
-    return { configured: false, keySource: 'none', offline: true }
+    return { configured: false, keySource: 'none', offline: true, server: getServerUrl() }
   }
 }
 
@@ -249,20 +124,28 @@ function isRetryable(error) {
 
 export async function requestAi(task, payload = {}, options = {}) {
   const settings = getServiceSettings()
-  const headers = { 'Content-Type': 'application/json' }
+  const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'wesolve' }
+  // The key is forwarded to the WeSolve server, which makes the provider call.
+  // It never travels from this page to the provider.
   if (settings.nvidiaApiKey) headers['x-ai-api-key'] = settings.nvidiaApiKey
   if (settings.nvidiaBaseUrl) headers['x-ai-base-url'] = settings.nvidiaBaseUrl
+  if (options.vision && settings.nvidiaVisionModel) headers['x-ai-vision-model'] = settings.nvidiaVisionModel
+  else if (settings.nvidiaModel) headers['x-ai-model'] = settings.nvidiaModel
+
+  const backend = await probeBackend().catch(() => ({ available: false }))
+  if (!backend.available) {
+    lastAiError = aiError(
+      'AI runs on the WeSolve server. Add your server URL in AI settings — the page never calls the provider itself.',
+      'NO_SERVER',
+    )
+    throw lastAiError
+  }
+
   const attempts = Math.max(1, options.retries ?? 3)
-
-  // On a static host there is no /api/ai to call: go straight to the provider
-  // with the user's own key instead of burning retries on a 404.
-  const knownBackend = getBackendState()
-  const backendMissing = knownBackend.checked ? !knownBackend.available : false
-
   let proxyError = null
-  for (let attempt = 0; attempt < attempts && !backendMissing; attempt += 1) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      const response = await fetch('/api/ai', {
+      const response = await fetch(apiUrl('/api/ai'), apiInit({
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -271,19 +154,17 @@ export async function requestAi(task, payload = {}, options = {}) {
           model: options.vision ? settings.nvidiaVisionModel : settings.nvidiaModel || undefined,
           maxTokens: options.maxTokens,
         }),
-      })
+      }))
       const result = await parseResponse(response)
       lastAiError = null
       return result.data
     } catch (error) {
       proxyError = error
       if (error.status === 404 || error.status === 405) markBackendMissing()
-      // A server with no key of its own is not fatal: this browser may hold one.
-      if (error.noKey && !settings.nvidiaApiKey) {
+      if (error.noKey) {
         lastAiError = error
         throw error
       }
-      if (error.noKey) break
       if (!isRetryable(error) || attempt === attempts - 1) break
       // Respect Retry-After, otherwise exponential backoff with jitter.
       const wait = error.retryAfter ? Math.min(error.retryAfter, 20) * 1000 : Math.round(600 * 2 ** attempt + Math.random() * 400)
@@ -291,25 +172,9 @@ export async function requestAi(task, payload = {}, options = {}) {
     }
   }
 
-  // If the proxy host has no outbound access but the browser holds a key,
-  // try the public NVIDIA endpoint directly. CORS may block this; the local
-  // engine remains the final fallback.
-  if (settings.nvidiaApiKey && !options.noDirect) {
-    try {
-      const data = await directNvidiaRequest(task, payload, settings)
-      lastAiError = null
-      return data
-    } catch (directError) {
-      // The provider's own message is the most useful thing to show.
-      lastAiError = directError
-      throw directError
-    }
-  }
-
   lastAiError = proxyError || aiError('Connect your own API key to turn on live AI answers.', 'NO_API_KEY')
   throw lastAiError
 }
-
 
 export function blobUrlToDataUrl(blobUrl) {
   return new Promise((resolve, reject) => {
@@ -649,46 +514,112 @@ export async function aiExamPrediction(material, details = {}) {
   }
 }
 
+/** Trim conversational scaffolding so a title is a topic, not a sentence. */
+function lessonTitleFrom(topic) {
+  let text = String(topic || '').replace(/\s+/g, ' ').trim()
+  text = text.replace(/^(please\s+|hey\s+|ok(ay)?\s+)?(can you\s+|could you\s+|would you\s+)?/i, '')
+  text = text.replace(/^(explain|describe|define|teach me|tell me about|tell me|show me|walk me through|help me( understand)?|summari[sz]e)\b(\s+(about|with|on|to|me|what|how|why|is|are|it|this|that))*\s*/i, '')
+  text = text.replace(/^(what|who|why|how|when|where)\s+(is|are|was|were|does|do|did|can|could|should|would)\s+/i, '')
+  text = text.replace(/^(what|who|why|how|when|where)\s+/i, '')
+  text = text.replace(/[?.!]+$/, '').replace(/\s+/g, ' ').trim()
+  if (!text) text = String(topic || 'Your lesson').replace(/[?.!]+$/, '').trim() || 'Your lesson'
+  text = text.charAt(0).toUpperCase() + text.slice(1)
+  return text.length > 60 ? `${text.slice(0, 57).trimEnd()}…` : text
+}
+
+/** Keep every board line meaningful: no blanks, no bare numbers, no repeats. */
+function boardLines(lines) {
+  const seen = new Set()
+  return lines
+    .map((line) => String(line || '').replace(/\s+/g, ' ').trim())
+    .filter((line) => line && !/^[\d\s.\-–—)("'`]+$/.test(line))
+    .filter((line) => {
+      const key = line.toLowerCase().replace(/[.!]+$/, '')
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+}
+
+function splitSentences(text) {
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 24)
+}
+
+/**
+ * Offline lessons.
+ *
+ * Order of preference:
+ *   1. the user's own material — real content, so the board teaches it;
+ *   2. a problem the built-in solver can actually work — real steps;
+ *   3. a labelled study outline that names the questions the topic must answer.
+ *
+ * The old version pasted the solver's meta-steps ("Understand what is being
+ * asked") onto the board, twice, and titled the lesson with the raw question.
+ */
 function buildLocalLesson(topic, material = '') {
-  const solution = solveProblem(topic, [])
-  const clean = String(topic).trim()
-  const title = clean.length > 48 ? `${clean.slice(0, 45)}…` : clean || 'Your lesson'
-  const steps = [
-    {
-      lines: [title, 'let’s break this down'],
-      note: 'Set up the lesson',
-      speech: `Let's work through ${title} together. I'll write each idea on the board as we go.`,
-      sketch: null,
-    },
-    ...solution.steps.slice(0, 4).map((step) => ({
-      lines: [step.title, ...String(step.body).replace(/\s+/g, ' ').split(/(?<=\.)\s/).slice(0, 2)],
-      note: step.title,
-      speech: step.body,
-      sketch: null,
-    })),
-    {
-      lines: ['Answer', solution.finalAnswer],
-      note: 'The result',
-      speech: `That gives us ${solution.finalAnswer}. Say it back in your own words to make it stick.`,
-      sketch: null,
-    },
-  ]
-  const boardSteps = steps.map((step) => ({
-    ...step,
-    lines: step.lines.map((line) => String(line).slice(0, 70)),
-    board: String(step.lines[0]).slice(0, 90),
-  }))
+  const cleanTopic = String(topic || '').trim()
+  const title = lessonTitleFrom(cleanTopic)
+  const solution = solveProblem(cleanTopic, [])
+  const materialText = String(material || '').trim()
+  const steps = []
+
+  const addStep = (lines, note, speech, sketch = null) => {
+    const cleaned = boardLines(lines).map((line) => line.slice(0, 74))
+    if (!cleaned.length) return
+    const board = cleaned[0].slice(0, 90)
+    steps.push({
+      lines: cleaned,
+      board,
+      note: note && note.toLowerCase() !== board.toLowerCase() ? note.slice(0, 110) : `Step ${steps.length + 1}`,
+      speech,
+      sketch,
+    })
+  }
+
+  if (materialText.length > 160) {
+    // Build the lesson from what the user supplied, so every line is real.
+    const sentences = splitSentences(materialText)
+    addStep([title, 'from your own notes'], 'What this covers', `This lesson is built from your notes on ${title}.`)
+    if (sentences[0]) addStep(['Key idea', sentences[0]], 'The main claim', sentences[0])
+    if (sentences[1] || sentences[2]) {
+      addStep(['Supporting details', sentences[1], sentences[2]].filter(Boolean), 'How it is supported', [sentences[1], sentences[2]].filter(Boolean).join(' '))
+    }
+    if (sentences[3]) addStep(['More detail', sentences[3]], 'How it fits together', sentences[3])
+    addStep(['Recap', sentences[0] ? sentences[0].slice(0, 110) : title], 'Say it back in your own words', 'Try to say the key idea without looking at the board.')
+  } else if (solution.type !== 'concept' && solution.type !== 'empty' && solution.steps?.length >= 2) {
+    // A problem the built-in engine can genuinely solve.
+    addStep([title, 'worked step by step'], 'Set up the problem', `Let's work through ${title} together.`)
+    solution.steps.slice(0, 4).forEach((step, index) => {
+      const body = splitSentences(step.body)
+      const first = body[0] && body[0].toLowerCase().replace(/[.!]+$/, '') !== String(step.title).toLowerCase() ? body[0] : ''
+      addStep([step.title, first, body[1]], step.title, step.body || step.title, index === 0 ? solution.graph?.kind : null)
+    })
+    addStep(['Answer', solution.finalAnswer], 'Check it before moving on', `That gives ${solution.finalAnswer}. Put it back into the question to confirm.`)
+  } else {
+    // Nothing to solve and no notes: an honest, clearly-labelled outline.
+    addStep(['Offline outline', `Connect your server for the full AI lesson on ${title}`], 'Why this is an outline', 'This board has no AI server connected, so it can only outline the topic, not explain it.')
+    addStep(['What it is', `Define ${title} in one sentence, with its symbols.`], 'Start with a definition', `Begin by saying what ${title} means, in one sentence.`)
+    addStep(['Where it comes from', 'Which rule or principle produces it?', 'What has to be true for it to apply?'], 'The reasoning and its conditions', 'Every rule has conditions. Name them before you use the rule.')
+    addStep(['Worked example', 'Apply it once, slowly, one line at a time.', 'Then check the result against the original question.'], 'See it used', 'Try a small example from start to finish, and check the answer at the end.')
+    addStep(['Watch out for', 'Signs, limits, order of operations, special cases.'], 'The usual mistakes', 'Most lost marks come from the conditions, not the formula.')
+    addStep(['Recap', `Explain ${title} without looking at the board.`], 'Close the loop', 'If you can explain it out loud, you know it.')
+  }
+
   return {
     id: createId('lesson'),
     title,
     subject: solution.subject || 'Study',
-    duration: `${boardSteps.length * 2} min`,
+    duration: `${Math.max(3, steps.length * 2)} min`,
     color: '#6c55f6',
     custom: true,
-    steps: boardSteps,
+    steps,
     checkpoint: {
-      prompt: `Which idea is the key to ${title}?`,
-      options: [solution.steps[0]?.title || 'Identify the goal first', 'Skip the setup', 'Memorize only the final answer'],
+      prompt: `How do you know you actually understand “${title}”?`,
+      options: ['State it, use it on a new example, then check the result', 'Copy the final answer without the steps', 'Skip the conditions and memorise the result'],
       correctIndex: 0,
     },
     source: 'local',
@@ -698,15 +629,16 @@ function buildLocalLesson(topic, material = '') {
 
 function normalizeLesson(data, fallback) {
   const steps = ensureArray(data.steps, fallback.steps).map((step, index) => {
-    const lines = ensureArray(step?.lines, fallback.steps[index]?.lines || [])
+    const lines = boardLines(ensureArray(step?.lines, fallback.steps[index]?.lines || [])
       .map((line) => cleanString(line, ''))
       .filter(Boolean)
-      .map((line) => line.slice(0, 76))
+      .map((line) => line.slice(0, 76)))
     if (!lines.length) return null
+    const note = cleanString(step?.note, fallback.steps[index]?.note || '')
     return {
       lines,
       board: lines[0],
-      note: cleanString(step?.note, fallback.steps[index]?.note || lines[0]),
+      note: note && note.toLowerCase() !== lines[0].toLowerCase() ? note : `Step ${index + 1}`,
       speech: cleanString(step?.speech, fallback.steps[index]?.speech || lines.join('. ')),
       sketch: ['parabola', 'parabolaRoots', 'leaf', 'chloroplast', 'cycle', 'chromosomes', 'cells', 'tangent'].includes(step?.sketch) ? step.sketch : null,
     }

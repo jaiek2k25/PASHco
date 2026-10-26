@@ -1,16 +1,17 @@
+import { apiInit, apiUrl } from './apiBase'
+
 const BASE = '/api/auth'
 
 async function call(path, { method = 'GET', body, signal } = {}) {
-  const response = await fetch(`${BASE}${path}`, {
+  const response = await fetch(apiUrl(`${BASE}${path}`), apiInit({
     method,
-    credentials: 'same-origin',
     signal,
     headers: {
       'Content-Type': 'application/json',
       'X-Requested-With': 'wesolve',
     },
     body: body === undefined ? undefined : JSON.stringify(body),
-  })
+  }))
 
   // A static host answers unknown paths with its HTML page, which is not an
   // account error — flag it so the caller can fall back to device-local mode.

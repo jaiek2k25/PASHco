@@ -18,6 +18,7 @@ import {
   updateProfile,
 } from './authStore.js'
 import { validateBaseUrl } from './aiEndpoint.js'
+import { applyCors, cookiePolicy, isOriginAllowed, requestOrigin } from './cors.js'
 
 const COOKIE_NAME = 'wesolve_session'
 const MAX_BODY_BYTES = 3 * 1024 * 1024
@@ -86,25 +87,23 @@ function parseCookies(header = '') {
   return result
 }
 
-function isSecureRequest(req) {
-  return Boolean(req.socket?.encrypted) || String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https'
-}
-
 function sessionCookie(req, token) {
+  const policy = cookiePolicy(req)
   const parts = [
     `${COOKIE_NAME}=${encodeURIComponent(token)}`,
     'Path=/',
     'HttpOnly',
-    'SameSite=Lax',
+    `SameSite=${policy.sameSite}`,
     `Max-Age=${SESSION_TTL_SECONDS}`,
   ]
-  if (isSecureRequest(req)) parts.push('Secure')
+  if (policy.secure) parts.push('Secure')
   return parts.join('; ')
 }
 
 function clearCookie(req) {
-  const parts = [`${COOKIE_NAME}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0']
-  if (isSecureRequest(req)) parts.push('Secure')
+  const policy = cookiePolicy(req)
+  const parts = [`${COOKIE_NAME}=`, 'Path=/', 'HttpOnly', `SameSite=${policy.sameSite}`, 'Max-Age=0']
+  if (policy.secure) parts.push('Secure')
   return parts.join('; ')
 }
 
@@ -125,14 +124,20 @@ function requireUser(req, res) {
   return user
 }
 
+/**
+ * Same host, or an origin explicitly allowed for the static build. The custom
+ * X-Requested-With header below is the actual CSRF gate: a plain cross-site
+ * form cannot set it without a successful CORS preflight.
+ */
 function sameOrigin(req) {
   const origin = req.headers.origin
   if (!origin) return true
   try {
-    return new URL(origin).host === req.headers.host
+    if (new URL(origin).host === req.headers.host) return true
   } catch {
     return false
   }
+  return isOriginAllowed(origin)
 }
 
 export function createAccountHandler() {
@@ -148,6 +153,14 @@ export function createAccountHandler() {
       res.statusCode = 204
       res.setHeader('Allow', 'GET, POST, PATCH, PUT, DELETE, OPTIONS')
       res.end()
+      return
+    }
+
+    // Cross-site callers (the static build) are only served when their origin
+    // is on the allow list. Same-origin requests carry no Origin header.
+    const origin = requestOrigin(req)
+    if (origin && !applyCors(req, res)) {
+      sendJson(res, 403, { error: `Origin ${origin} is not allowed to use this API.` })
       return
     }
 

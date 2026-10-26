@@ -5,11 +5,13 @@ import { useApp } from '../context/AppContext'
 import { getAiStatus, requestAi } from '../lib/aiClient'
 import { accounts } from '../lib/accounts'
 import { getServiceSettings, maskKey, setServiceSettings } from '../lib/serviceSettings'
+import { getServerUrl, isRemoteServer, setServerUrl } from '../lib/apiBase'
+import { probeBackend, resetBackendProbe } from '../lib/backend'
 
 const EMPTY = { nvidiaApiKey: '', nvidiaModel: '', nvidiaVisionModel: '', nvidiaBaseUrl: '' }
 
-// Hosts that accept requests straight from a browser (CORS enabled). On the
-// static build these are the only providers that can work without a server.
+// Provider presets. The WeSolve server makes the actual request to whichever
+// endpoint is chosen here.
 const PRESETS = [
   { id: 'nvidia', label: 'NVIDIA', base: '', model: 'meta/llama-3.3-70b-instruct', vision: 'meta/llama-3.2-11b-vision-instruct', browser: false },
   { id: 'openrouter', label: 'OpenRouter', base: 'https://openrouter.ai/api/v1', model: 'meta-llama/llama-3.3-70b-instruct', vision: 'meta-llama/llama-3.2-11b-vision-instruct', browser: true },
@@ -26,6 +28,9 @@ export default function ServiceSettingsModal() {
   const [accountKey, setAccountKey] = useState(null)
   const [testing, setTesting] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [serverInput, setServerInput] = useState(getServerUrl)
+  const [serverBusy, setServerBusy] = useState(false)
+  const [serverState, setServerState] = useState(null)
 
   const loadAccount = useCallback(async (signedIn) => {
     if (!signedIn) {
@@ -45,7 +50,9 @@ export default function ServiceSettingsModal() {
   useEffect(() => {
     if (!serviceSettingsOpen) return
     setSettings(getServiceSettings())
+    setServerInput(getServerUrl())
     setStatus(null)
+    setServerState(null)
   }, [serviceSettingsOpen, serviceSettingsVersion])
 
   // Keep the ownership panel and status in sync with sign-in state.
@@ -53,6 +60,26 @@ export default function ServiceSettingsModal() {
     if (!serviceSettingsOpen) return
     loadAccount(isAuthenticated).then(() => getAiStatus().then(setStatus))
   }, [serviceSettingsOpen, serviceSettingsVersion, isAuthenticated, loadAccount])
+
+  const applyServer = async (url) => {
+    setServerBusy(true)
+    try {
+      setServerUrl(url)
+      resetBackendProbe()
+      const result = await probeBackend({ force: true })
+      setServerState(result.available)
+      if (result.available) {
+        toast(url || isRemoteServer()
+          ? 'Connected to your WeSolve server. AI and accounts now run through it.'
+          : 'Using this site’s server.')
+      } else {
+        toast('Could not reach that server. Check the URL and that it allows this site (WESOLVE_ALLOWED_ORIGINS).', 'error')
+      }
+      await refreshStatus()
+    } finally {
+      setServerBusy(false)
+    }
+  }
 
   const refreshStatus = async () => {
     setStatus(await getAiStatus())
@@ -178,6 +205,52 @@ export default function ServiceSettingsModal() {
       footer={<><Button variant="ghost" icon={Trash2} onClick={clear} disabled={busy || (!savedOnAccount && !hasLocalKey)}>Remove key</Button><Button variant="outline" onClick={() => setServiceSettingsOpen(false)}>Cancel</Button><Button icon={busy ? LoaderCircle : CheckCircle2} onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save key'}</Button></>}
     >
       <div className="service-settings">
+        <div className="service-section server-section">
+          <div className="service-section-head">
+            <div>
+              <h3>WeSolve server</h3>
+              <p>AI requests and accounts are handled by this server. The page never calls an AI provider itself.</p>
+            </div>
+            <CloudCog size={19} />
+          </div>
+          <div className="server-row">
+            <label className="field-label">
+              <span>Server URL</span>
+              <input
+                value={serverInput}
+                onChange={(event) => setServerInput(event.target.value)}
+                placeholder="https://wesolve.onrender.com"
+                autoComplete="url"
+                spellCheck="false"
+              />
+            </label>
+            <Button
+              variant="outline"
+              icon={serverBusy ? LoaderCircle : RefreshCw}
+              onClick={() => applyServer(serverInput.trim())}
+              disabled={serverBusy}
+            >
+              {serverBusy ? 'Connecting…' : 'Connect'}
+            </Button>
+          </div>
+          <div className="server-state">
+            <Badge tone={hasBackend ? 'green' : 'gray'}>
+              {hasBackend ? 'SERVER CONNECTED' : 'NO SERVER'}
+            </Badge>
+            <span>
+              {hasBackend
+                ? `AI and sign-in are served by ${getServerUrl() || 'this site'}.`
+                : 'Without a server the app uses the built-in engine and device-local profiles.'}
+            </span>
+            {isRemoteServer() && (
+              <button type="button" className="link-button" onClick={() => applyServer('')}>Use this site instead</button>
+            )}
+          </div>
+          {serverState === false && (
+            <p className="modal-hint error-hint">That URL did not answer <code>/api/ai/health</code>. Check the deployment, and add this site’s origin to <code>WESOLVE_ALLOWED_ORIGINS</code> on the server.</p>
+          )}
+        </div>
+
         <div className="service-status-row">
           <div className={`service-status-icon ${ready ? 'ready' : ''}`}>{ready ? <Sparkles size={20} /> : <KeyRound size={20} />}</div>
           <div>
@@ -191,14 +264,14 @@ export default function ServiceSettingsModal() {
 
         <div className={`service-owner ${isAuthenticated && !staticHost ? 'is-account' : 'is-guest'}`}>
           {staticHost
-            ? <><UserRound size={18} /><div><strong>Saved in this browser</strong><p>There is no WeSolve server on this build, so the key cannot be stored on an account.</p></div></>
+            ? <><UserRound size={18} /><div><strong>Saved in this browser</strong><p>The key is only sent once a WeSolve server is connected above; it is never sent to a provider from this page.</p></div></>
             : isAuthenticated
               ? <><CloudCog size={18} /><div><strong>Saved to your account</strong><p>Encrypted on the server, so it follows you to every device you sign in on.</p></div></>
               : <><UserRound size={18} /><div><strong>This browser only</strong><p>Sign in to keep your key across devices. <button type="button" className="link-button" onClick={() => { setServiceSettingsOpen(false); setAuthOpen(true) }}>Create an account</button></p></div></>}
         </div>
 
         <div className="service-section">
-          <div className="service-section-head"><div><h3>{isAuthenticated ? 'Your API key' : 'API key'}</h3><p>{isAuthenticated ? 'Stored encrypted on your account. The server only returns a masked hint.' : 'Stored in this browser and sent with each request.'}</p></div><Lock size={19} /></div>
+          <div className="service-section-head"><div><h3>{isAuthenticated ? 'Your API key' : 'API key'}</h3><p>{isAuthenticated ? 'Stored encrypted on your account. Your server decrypts it to make the request.' : 'Kept in this browser and sent only to your WeSolve server, which calls the provider.'}</p></div><Lock size={19} /></div>
 
           {savedOnAccount && (
             <div className="saved-key-row">
@@ -229,8 +302,6 @@ export default function ServiceSettingsModal() {
                 }))}
               >
                 {preset.label}
-                {staticHost && !preset.browser && <small>server</small>}
-                {staticHost && preset.browser && <small className="ok">browser-ready</small>}
               </button>
             ))}
           </div>
@@ -242,7 +313,7 @@ export default function ServiceSettingsModal() {
         </div>
 
         {!hasBackend && (
-          <div className="service-warning"><AlertTriangle size={18} /><p><strong>Preview build, no server.</strong> Your key is saved in this browser and sent straight to the provider. Many providers block browser requests (CORS), so this only works with one that allows them — NVIDIA and most others need the Node deployment.</p></div>
+          <div className="service-warning"><AlertTriangle size={18} /><p><strong>No server connected.</strong> AI cannot run without one. Deploy the Node app (see <code>DEPLOY.md</code>) and paste its URL above — then every AI request goes from that server to the provider, never from this page.</p></div>
         )}
 
         <div className="service-warning"><AlertTriangle size={18} /><p><strong>Your key, your bill.</strong> Requests are billed to the key you connect here, so other people using WeSolve never spend your credits. Keys are encrypted at rest and never sent back to the browser. Never commit a key to GitHub.</p></div>

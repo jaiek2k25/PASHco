@@ -505,3 +505,14 @@ label { font-weight: 600; }
 .provider-presets button.is-active { border-color: var(--accent); background: var(--accent-soft, rgba(108, 85, 246, .1)); color: var(--accent); }
 .provider-presets small { font-size: 9px; font-weight: 500; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-2); }
 .provider-presets small.ok { color: #1fa971; }
+
+/* Server connection block inside AI settings */
+.server-section { border: 1px solid #e7e3fb; background: #fbfaff; border-radius: 14px; padding: 14px; gap: 10px; }
+.server-row { display: flex; align-items: flex-end; gap: 8px; }
+.server-row .field-label { flex: 1; margin: 0; }
+.server-row .btn { flex: 0 0 auto; margin-bottom: 1px; }
+.server-state { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 11px; color: var(--muted); }
+.server-state .link-button { font-size: 11px; }
+.error-hint { color: #b4384d; }
+.error-hint code { background: rgba(180, 56, 77, .08); border-radius: 4px; padding: 0 3px; }
+@media (max-width: 560px) { .server-row { flex-direction: column; align-items: stretch; } }

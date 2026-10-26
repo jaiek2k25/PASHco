@@ -180,7 +180,7 @@ Generate 6-10 key points, 6-10 keywords, and 3 action items.`,
     "correctIndex": 0
   }
 }
-Rules: 4-6 steps. Every step needs 2-4 lines, each under 58 characters. Use plain text maths with ^ for powers and Unicode symbols where helpful. Choose a sketch only when it genuinely helps. Make the checkpoint test the core idea.`,
+Rules: 4-6 steps. "title" is a short topic name (max 8 words), never the student's raw question. Every step needs 2-4 lines, each under 58 characters, and no line may repeat another line or the step note. The first step is a short heading, not the whole question. Use plain text maths with ^ for powers and Unicode symbols where helpful. Choose a sketch only when it genuinely helps. Make the checkpoint test the core idea with exactly one defensible correct answer.`,
   },
   exam: {
     maxTokens: 4000,

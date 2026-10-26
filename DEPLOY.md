@@ -120,17 +120,44 @@ is present, and the browser will not send them over plain HTTP.
 - Serverless/edge functions (accounts live on a disk)
 - Multiple replicas without shared storage — `accounts.json` is a single-writer file
 
-## Making AI work on the static (Pages) build
+## AI runs on the Node server, never in the browser
 
-Pages serves files only, so `/api/ai` does not exist and browsers cannot call
-NVIDIA directly (no CORS). Two supported ways to get real AI answers there:
+Every AI request is a `POST /api/ai` to the WeSolve server. The browser holds
+the key at most, forwards it to the server, and the server calls the provider.
+Nothing is sent from the page to NVIDIA, OpenRouter, or anyone else — so
+provider CORS rules, browser storage limits, and leaked keys stop mattering.
 
-| Path | What you do | Result |
+### 1. Deploy the server (one click, free)
+
+| Host | What to do | Accounts |
 | --- | --- | --- |
-| Browser-ready provider | Connect AI → Quick set-up → OpenRouter / Groq / Gemini → paste key → Test | Works immediately, key stays in the browser |
-| Your own proxy | `npx wrangler deploy deploy/ai-proxy/worker.js --name wesolve-ai`, then set API base URL to `https://wesolve-ai.<you>.workers.dev/v1` | NVIDIA keys work; worker stores nothing |
+| Render | New → Blueprint → pick this repo. `render.yaml` is ready (`plan: free`) | reset on restart (ephemeral disk) |
+| Render + disk | Switch to `plan: starter`, attach the disk block in `render.yaml` | permanent |
+| Fly.io | `fly launch --no-deploy --copy-config`, create the volume, `fly deploy` | permanent |
+| Docker | `docker build -t wesolve . && docker run -p 3000:3000 -v wesolve-data:/data wesolve` | permanent |
 
-Accounts on the Pages build are stored per browser (PBKDF2-hashed password,
-work kept in local storage). Sign-in on the Node build is what syncs accounts
-across devices. See [`deploy/ai-proxy/README.md`](deploy/ai-proxy/README.md).
+The server serves the built app *and* the API on the same URL, so the simplest
+result is to use that URL directly and skip GitHub Pages.
 
+### 2. Point the static build at it (optional)
+
+The GitHub Pages build is only the interface. Open **Connect AI → WeSolve
+server**, paste the deployed URL, press **Connect**. From then on:
+
+- AI calls go `page → your server → provider`;
+- sign-in and account sync use that server (session cookie set for cross-site);
+- the status line in the app reads `SERVER CONNECTED`.
+
+Cross-origin access is controlled by `WESOLVE_ALLOWED_ORIGINS` on the server.
+The default already allows `https://jaiek2k25.github.io` plus localhost. Add
+your own origin if you fork the front end:
+
+```bash
+WESOLVE_ALLOWED_ORIGINS=https://jaiek2k25.github.io,https://your-frontend.example
+```
+
+### 3. Connect an AI key
+
+Each person uses their own key (NVIDIA, OpenRouter, Groq, Gemini, DeepSeek, or
+any OpenAI-compatible endpoint). Signed in, the key is stored encrypted on the
+account; otherwise it stays in the browser and is forwarded per request.

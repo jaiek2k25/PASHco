@@ -8,65 +8,52 @@ import { Badge, Button, Modal, Segmented } from '../components/Common'
 import { useApp } from '../context/AppContext'
 import { createFollowupAnswer, createId, sampleProblems, truncate, wordCount } from '../lib/intelligence'
 import { extractDocumentText } from '../lib/fileExtract'
-import { aiFallbackReason, aiOcr, aiSolve, aiTutorAnswer, blobUrlToDataUrl, providerNeedsServer } from '../lib/aiClient'
+import { aiFallbackReason, aiOcr, aiSolve, aiTutorAnswer, blobUrlToDataUrl } from '../lib/aiClient'
 import { getServiceSettings, maskKey } from '../lib/serviceSettings'
 
 
 
 /**
  * One honest line above the composer: is live AI available for this request,
- * and if not, exactly why? This is what stops a local draft from looking like
- * an AI answer.
+ * and if not, exactly why? AI is answered by the WeSolve server, never by the
+ * page itself, so this reports the server connection.
  */
 function AiModeBanner({ version, hasBackend, isStaticPreview, onOpenSettings }) {
   const settings = useMemo(() => getServiceSettings(), [version])
   const hasKey = Boolean(settings.nvidiaApiKey)
-  const provider = (() => {
-    const value = settings.nvidiaBaseUrl
-    if (!value) return 'NVIDIA'
-    try {
-      return new URL(value).host
-    } catch {
-      return 'custom provider'
-    }
-  })()
 
-  // A key alone is not a working connection on the static build: this provider
-  // may refuse browser requests. Say which case we are in before the user asks.
-  const blockedHere = isStaticPreview && providerNeedsServer(settings.nvidiaBaseUrl)
-
-  if (hasKey && blockedHere) {
+  if (!hasBackend) {
     return (
       <div className="ai-mode ai-mode-warn-row">
         <span className="ai-mode-dot" />
-        <strong>Key saved, but this provider blocks browsers</strong>
-        <span>{provider} refuses cross-origin requests, so answers will come from the offline engine. Use a proxy URL or pick OpenRouter, Groq, or Gemini.</span>
-        <button type="button" onClick={onOpenSettings}>Fix</button>
+        <strong>Offline engine</strong>
+        <span>
+          {isStaticPreview
+            ? 'This preview has no WeSolve server, so answers come from the built-in solver. Add your server URL to get AI answers.'
+            : 'The WeSolve server is unreachable, so answers come from the built-in solver.'}
+        </span>
+        <button type="button" onClick={onOpenSettings}>Connect server</button>
       </div>
     )
   }
 
-  if (hasKey) {
+  if (!hasKey) {
     return (
-      <div className="ai-mode ai-mode-on">
+      <div className="ai-mode ai-mode-off">
         <span className="ai-mode-dot" />
-        <strong>Live AI on</strong>
-        <span>{provider} · key {maskKey(settings.nvidiaApiKey)}</span>
-        <button type="button" onClick={onOpenSettings}>Change</button>
+        <strong>No AI key</strong>
+        <span>Answers come from the built-in solver until you connect a key. The key is used by your server, not this page.</span>
+        <button type="button" onClick={onOpenSettings}>Connect AI</button>
       </div>
     )
   }
 
   return (
-    <div className="ai-mode ai-mode-off">
+    <div className="ai-mode ai-mode-on">
       <span className="ai-mode-dot" />
-      <strong>Offline engine</strong>
-      <span>
-        {hasBackend
-          ? 'No AI key connected, so answers come from the built-in solver.'
-          : 'This preview has no server and no AI key, so answers are written by the built-in solver.'}
-      </span>
-      <button type="button" onClick={onOpenSettings}>Connect AI</button>
+      <strong>Live AI on</strong>
+      <span>Answered by your WeSolve server · key {maskKey(settings.nvidiaApiKey)}</span>
+      <button type="button" onClick={onOpenSettings}>Change</button>
     </div>
   )
 }

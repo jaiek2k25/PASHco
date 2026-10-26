@@ -291,8 +291,12 @@ export function AccountPage() {
           </div>
 
           <div className="side-card connection-card">
-            <div className="side-card-head"><h3>Connected services</h3><Badge tone={aiStatus?.configured ? 'green' : 'gray'}>{aiStatus?.configured ? 'AI ON' : 'LOCAL'}</Badge></div>
-            <div className="connection-row"><span><KeyRound size={17} /></span><div><strong>{aiStatus?.staticHost ? 'Your provider' : 'NVIDIA Build'}</strong><small>{aiStatus?.configured ? `Connected · ${aiStatus.model}` : serviceSettings.nvidiaApiKey ? `Key saved ${maskKey(serviceSettings.nvidiaApiKey)}` : 'No API key connected'}</small></div></div>
+            <div className="side-card-head"><h3>Connected services</h3><Badge tone={aiStatus?.configured ? 'green' : 'gray'}>{aiStatus?.configured ? 'AI ON' : aiStatus?.needsServer ? 'NO SERVER' : 'LOCAL'}</Badge></div>
+            <div className="connection-row"><span><KeyRound size={17} /></span><div><strong>{aiStatus?.needsServer ? 'WeSolve server' : 'AI provider'}</strong><small>{aiStatus?.needsServer
+              ? 'Not connected — AI runs on your server'
+              : aiStatus?.configured
+                ? `Connected · ${aiStatus.model}`
+                : serviceSettings.nvidiaApiKey ? `Key saved ${maskKey(serviceSettings.nvidiaApiKey)}` : 'No API key connected'}</small></div></div>
             <div className="connection-row"><span><UserRound size={17} /></span><div><strong>WeSolve account</strong><small>{isAuthenticated ? state.user.email : 'Guest workspace'}</small></div></div>
             <Button variant="outline" size="sm" className="full-width" icon={Settings} onClick={() => setServiceSettingsOpen(true)}>Manage AI settings</Button>
           </div>

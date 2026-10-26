@@ -3,6 +3,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs'
 import { extname, join, resolve, sep } from 'node:path'
 import { createAiHandler } from './nvidiaAiPlugin.js'
 import { createAccountHandler } from './accountPlugin.js'
+import { applyCors, handlePreflight } from './cors.js'
 
 const DIST = resolve(process.env.DIST_DIR || 'dist')
 const PORT = Number(process.env.PORT) || 3000
@@ -39,6 +40,11 @@ function sendText(res, status, text) {
 }
 
 const server = http.createServer((req, res) => {
+  // The static build can live on another origin (GitHub Pages) and call this
+  // server for accounts and AI, so CORS is negotiated before anything else.
+  applyCors(req, res)
+  if (handlePreflight(req, res)) return
+
   let url
   try {
     url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`)
@@ -112,7 +118,8 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, HOST, () => {
   console.log(`WeSolve is serving ${DIST}`)
   console.log(`Listening on http://${HOST}:${PORT}`)
-  console.log(`NVIDIA AI proxy: ${process.env.NVIDIA_API_KEY ? 'server key configured' : 'waiting for a browser key'}`)
+  console.log(`AI proxy: ${process.env.WESOLVE_SHARED_KEY === 'true' && process.env.NVIDIA_API_KEY ? 'shared key enabled' : 'per-user keys only'}`)
+  console.log('Cross-origin API: ' + (process.env.WESOLVE_ALLOWED_ORIGINS || 'https://jaiek2k25.github.io, localhost').trim())
 })
 
 function shutdown() {

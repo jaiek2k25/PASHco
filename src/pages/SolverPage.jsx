@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { evaluate } from 'mathjs'
-import { ArrowRight, BarChart3, BookOpen, BrainCircuit, Calculator, Camera, Check, CheckCircle2, ChevronRight, CircleHelp, Clock3, Copy, FlaskConical, History, Image as ImageIcon, Link2, LoaderCircle, Mic, Paperclip, Play, Plus, RotateCcw, Search, Send, Sigma, Sparkles, TableProperties, ThumbsDown, ThumbsUp, Trash2, Upload, Volume2, WandSparkles, X } from 'lucide-react'
+import { ArrowRight, BarChart3, BookOpen, BrainCircuit, Calculator, Camera, Check, CheckCircle2, ChevronRight, CircleHelp, Clock3, Copy, FlaskConical, History, Image as ImageIcon, Link2, LoaderCircle, MessageCircle, Mic, Paperclip, Play, Plus, RotateCcw, Search, Send, Sigma, Sparkles, TableProperties, ThumbsDown, ThumbsUp, Trash2, Upload, Volume2, WandSparkles, X } from 'lucide-react'
 import ToolTabs from '../components/ToolTabs'
 import SolutionGraph from '../components/SolutionGraph'
 import { Badge, Button, Modal, Segmented } from '../components/Common'
@@ -228,6 +228,7 @@ export default function SolverPage() {
   const [feedback, setFeedback] = useState(null)
   const [chatInput, setChatInput] = useState('')
   const chatEndRef = useRef(null)
+  const followupRef = useRef(null)
   const [chat, setChat] = useState([])
   const [videoPlaying, setVideoPlaying] = useState(false)
   const [videoStep, setVideoStep] = useState(0)
@@ -418,6 +419,12 @@ export default function SolverPage() {
     if (chat.length) chatEndRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [chat])
 
+  const focusFollowup = () => {
+    // Jump straight to the message box instead of leaving it below the fold.
+    followupRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    followupRef.current?.querySelector('input')?.focus({ preventScroll: true })
+  }
+
   const copySolution = async () => {
     if (!result) return
     const content = `${result.question}\n\nFinal answer: ${result.finalAnswer}\n\n${result.steps.map((step, index) => `${index + 1}. ${step.title}: ${step.body}`).join('\n')}`
@@ -574,7 +581,7 @@ export default function SolverPage() {
               <div className="solution-question"><span className="solution-avatar"><Sparkles size={17} /></span><div><small>Your question · {result.subject} {result.source === 'nvidia'
                   ? <Badge tone="green" className="inline-badge">AI</Badge>
                   : <Badge tone="gray" className="inline-badge">OFFLINE ENGINE</Badge>}</small><h2>{result.question}</h2></div></div>
-              <div className="solution-actions"><Button variant="ghost" size="sm" icon={Plus} onClick={reset}>New question</Button><button className="icon-button" onClick={copySolution} title="Copy solution">{copied ? <Check size={18} /> : <Copy size={18} />}</button></div>
+              <div className="solution-actions"><Button variant="ghost" size="sm" icon={MessageCircle} onClick={focusFollowup}>Ask follow-up</Button><Button variant="ghost" size="sm" icon={Plus} onClick={reset}>New question</Button><button className="icon-button" onClick={copySolution} title="Copy solution">{copied ? <Check size={18} /> : <Copy size={18} />}</button></div>
             </div>
 
             {result.attachments?.length > 0 && <div className="solution-attachments">{result.attachments.map((item) => <span key={item.id}><Paperclip size={14} />{truncate(item.name, 30)}</span>)}</div>}
@@ -632,7 +639,7 @@ export default function SolverPage() {
               <div className="followup-suggestions">{result.followups.map((followup) => <button key={followup} onClick={() => askFollowup(followup)}>{followup}<ChevronRight size={15} /></button>)}</div>
               {chat.map((message) => <div className="chat-thread" key={message.id}><div className="chat-user"><span>You</span><p>{message.question}</p></div><div className={`chat-ai ${message.pending ? 'pending-answer' : ''}`}><span><Sparkles size={13} /> WeSolve {message.offline && <em className="chat-offline" title={message.offlineReason}>offline engine</em>}</span><p>{message.answer}</p><button onClick={() => { if (window.speechSynthesis) { const utterance = new SpeechSynthesisUtterance(message.answer); window.speechSynthesis.speak(utterance) } }}><Volume2 size={14} /> Read aloud</button></div></div>)}
               <div ref={chatEndRef} />
-              <form className="followup-input" onSubmit={(event) => { event.preventDefault(); askFollowup() }}><button type="button" onClick={() => toast('Attachments are available on the new question screen.')}><Plus size={18} /></button><input value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="Ask follow-up…" /><button type="submit" aria-label="Send follow-up"><Send size={17} /></button></form>
+              <form ref={followupRef} className="followup-input" onSubmit={(event) => { event.preventDefault(); askFollowup() }}><button type="button" onClick={() => toast('Attachments are available on the new question screen.')}><Plus size={18} /></button><input value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="Ask follow-up…" /><button type="submit" aria-label="Send follow-up"><Send size={17} /></button></form>
             </div>
           </div>
 

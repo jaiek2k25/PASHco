@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowRight, BookOpen, BrainCircuit, CalendarDays, Check, Chrome, ClipboardCheck, Copy, Crown, Download, ExternalLink, FileText, GraduationCap, History, KeyRound, Layers3, LogOut, Mail, NotebookPen, Plus, RefreshCw, RotateCcw, Search, Settings, ShieldCheck, Smartphone, Sparkles, Star, Trash2, Upload, UserRound, X, Zap } from 'lucide-react'
+import { ArrowRight, BookOpen, BrainCircuit, CalendarDays, Check, Chrome, ClipboardCheck, Copy, Crown, Download, ExternalLink, FileText, GraduationCap, History, KeyRound, Layers3, Lock, LogOut, Mail, NotebookPen, Plus, RefreshCw, RotateCcw, Search, Settings, ShieldCheck, Smartphone, Sparkles, Star, Trash2, Upload, UserRound, X, Zap } from 'lucide-react'
 import ToolTabs from '../components/ToolTabs'
 import PageHeader from '../components/PageHeader'
 import MarketingHeader from '../components/MarketingHeader'
@@ -17,11 +17,12 @@ export function HistoryPage() {
   const [subject, setSubject] = useState('All')
   const [selected, setSelected] = useState(null)
 
-  const subjects = ['All', ...new Set(state.history.map((item) => item.subject))]
-  const items = useMemo(() => state.history.filter((item) => (subject === 'All' || item.subject === subject) && item.question.toLowerCase().includes(query.toLowerCase())), [state.history, query, subject])
+  const subjects = ['All', ...new Set(state.history.map((item) => item.subject || 'General'))]
+  const items = useMemo(() => state.history.filter((item) => (subject === 'All' || item.subject === subject)
+    && String(item.question || '').toLowerCase().includes(query.toLowerCase())), [state.history, query, subject])
 
   const exportHistory = () => {
-    const text = state.history.map((item) => `# ${item.question}\n\nSubject: ${item.subject}\nFinal answer: ${item.finalAnswer}\n\n${item.steps.map((step, index) => `${index + 1}. ${step.title}: ${step.body}`).join('\n')}`).join('\n\n---\n\n')
+    const text = state.history.map((item) => `# ${item.question}\n\nSubject: ${item.subject}\nFinal answer: ${item.finalAnswer}\n\n${(item.steps || []).map((step, index) => `${index + 1}. ${step.title}: ${step.body}`).join('\n')}`).join('\n\n---\n\n')
     downloadText('wesolve-solve-history.md', text || 'No solve history yet.', 'text/markdown')
   }
 

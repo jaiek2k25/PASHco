@@ -111,8 +111,24 @@ function clientIp(req) {
   return String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'unknown'
 }
 
+/**
+ * Session token: the HttpOnly cookie is the normal path. Browsers that block
+ * third-party cookies (Safari, and Chrome in some modes) cannot send it when
+ * the app is served from another origin, so the client may send the same signed
+ * token as `Authorization: Bearer ...` instead.
+ */
+function sessionTokenFrom(req) {
+  const header = req.headers.authorization
+  if (header) {
+    const value = Array.isArray(header) ? header[0] : header
+    const match = /^Bearer\s+(.+)$/i.exec(String(value).trim())
+    if (match) return match[1]
+  }
+  return parseCookies(req.headers.cookie)[COOKIE_NAME]
+}
+
 function currentUser(req) {
-  return readSession(parseCookies(req.headers.cookie)[COOKIE_NAME])
+  return readSession(sessionTokenFrom(req))
 }
 
 function requireUser(req, res) {
@@ -223,6 +239,7 @@ export function createAccountHandler() {
             user: created.publicUser,
             workspace: null,
             syncedAt: null,
+            token,
           }, { 'Set-Cookie': sessionCookie(req, token) })
           return
         }
@@ -238,6 +255,7 @@ export function createAccountHandler() {
           user: publicUser(user),
           workspace: saved.workspace,
           syncedAt: saved.syncedAt,
+          token,
         }, { 'Set-Cookie': sessionCookie(req, token) })
         return
       }
@@ -383,7 +401,8 @@ export function createAccountHandler() {
           return
         }
         const refreshed = { ...user, sessionVersion: result.sessionVersion }
-        sendJson(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(req, issueSession(refreshed)) })
+        const token = issueSession(refreshed)
+        sendJson(res, 200, { ok: true, token }, { 'Set-Cookie': sessionCookie(req, token) })
         return
       }
 

@@ -1,4 +1,5 @@
-import { apiInit, apiUrl } from './apiBase'
+import { apiInit, apiUrl, getServerUrl } from './apiBase'
+import { clearSessionToken, getSessionToken, saveSessionToken } from './sessionToken'
 
 const BASE = '/api/auth'
 
@@ -40,7 +41,13 @@ async function call(path, { method = 'GET', body, signal } = {}) {
     error.status = response.status
     error.field = data.field
     error.code = data.code
+    // An expired or revoked token must not linger and break every later call.
+    if (response.status === 401 && getSessionToken(getServerUrl())) clearSessionToken()
     throw error
+  }
+
+  if (data && typeof data.token === 'string' && data.token) {
+    saveSessionToken(data.token, getServerUrl())
   }
   return data
 }

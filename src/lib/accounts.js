@@ -9,6 +9,7 @@
  */
 import { authApi } from './authClient'
 import { isStaticHost, markBackendMissing, probeBackend } from './backend'
+import { clearSessionToken } from './sessionToken'
 import {
   changePasswordLocal,
   clearLocalAiKey,
@@ -51,7 +52,10 @@ export const accounts = {
 
   login: (payload) => withFallback(() => authApi.login(payload), () => loginLocal(payload)),
 
-  logout: () => withFallback(() => authApi.logout(), () => logoutLocal()),
+  logout: () => {
+    clearSessionToken()
+    return withFallback(() => authApi.logout(), () => logoutLocal())
+  },
 
   // Work is already persisted locally in both modes; the server copy is what
   // makes it follow you between devices.

@@ -7,6 +7,10 @@
 # Accounts are stored under WESOLVE_DATA_DIR. On the free plan that storage is
 # ephemeral, so accounts reset when the instance restarts. Switch to plan
 # starter and attach the disk block below to keep accounts permanently.
+#
+# After the first deploy, open the app at https://<service>.onrender.com and
+# sign up — the page talks to the API on its own origin, so there is no URL to
+# configure and no CORS setup to do.
 services:
   - type: web
     name: wesolve
@@ -24,9 +28,9 @@ services:
       # Allow the GitHub Pages build to call this API from another origin.
       - key: WESOLVE_ALLOWED_ORIGINS
         value: https://jaiek2k25.github.io
-      # Optional: a site-wide key. Off by default — every user brings their own.
-      - key: NVIDIA_API_KEY
-        sync: false
+      # Nothing else is required. Each user adds their own AI key in the app.
+      # If you ever want a site-wide key, add NVIDIA_API_KEY in the Render
+      # dashboard (Environment) — the server picks it up automatically.
 # Persistent accounts: change plan to "starter" and uncomment the disk lines.
 #    disk:
 #      name: wesolve-data

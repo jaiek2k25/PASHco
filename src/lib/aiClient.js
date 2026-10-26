@@ -44,6 +44,9 @@ export function aiFallbackReason() {
     NETWORK_ERROR: 'The AI provider could not be reached.',
     NO_SERVER: 'No WeSolve server is connected, and AI only runs on the server.',
     TIMEOUT: 'The AI provider took too long to answer.',
+    UPSTREAM_REDIRECT: 'That API base URL redirects somewhere else — save the final URL in Settings.',
+    UPSTREAM_TOO_LARGE: 'The AI provider sent a response that was too large to use.',
+    EMPTY_RESPONSE: 'The AI model returned an empty answer. Try again or switch models.',
   }
   return messages[lastAiError.code] || lastAiError.message || 'The AI provider is unavailable.'
 }
@@ -117,7 +120,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 /** Retry only failures that a retry can actually fix. Bad keys never retry. */
 function isRetryable(error) {
   if (!error || error.noKey) return false
-  if (error.code === 'INVALID_KEY' || error.code === 'NO_INFERENCE_ACCESS' || error.code === 'BAD_BASE_URL') return false
+  const permanent = ['INVALID_KEY', 'NO_INFERENCE_ACCESS', 'BAD_BASE_URL', 'UPSTREAM_REDIRECT', 'UPSTREAM_TOO_LARGE', 'EMPTY_RESPONSE']
+  if (permanent.includes(error.code)) return false
   if ([429, 502, 503, 504].includes(error.status)) return true
   return !error.status
 }

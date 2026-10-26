@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { createId, generateStudyPack, sampleStudyMaterial } from '../lib/intelligence'
 import { accounts } from '../lib/accounts'
-import { getBackendState, probeBackend, subscribeBackend } from '../lib/backend'
+import { getBackendState, probeBackend, retryBackend, subscribeBackend } from '../lib/backend'
 
 const STORAGE_KEY = 'wesolve-v1'
 const LEGACY_KEYS = ['pashco-solvely-recreation-v1', 'pashco-wesolve-recreation-v1']
@@ -34,18 +34,69 @@ function starterState() {
   return { ...defaultState, studySets: [{ ...starterPack, id: 'starter-pack' }] }
 }
 
+/**
+ * Stored or synced data can predate a field, or arrive half-written. Every list
+ * is repaired here so a single bad record cannot crash a whole page.
+ */
+function repairHistory(items) {
+  return (Array.isArray(items) ? items : [])
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => ({
+      ...item,
+      id: item.id || createId('solve'),
+      createdAt: item.createdAt || new Date().toISOString(),
+      question: typeof item.question === 'string' && item.question.trim() ? item.question : 'Untitled question',
+      subject: typeof item.subject === 'string' && item.subject.trim() ? item.subject : 'General',
+      finalAnswer: typeof item.finalAnswer === 'string' ? item.finalAnswer : '',
+      answerText: typeof item.answerText === 'string' ? item.answerText : '',
+      confidence: Number.isFinite(Number(item.confidence)) ? Number(item.confidence) : 0,
+      steps: (Array.isArray(item.steps) ? item.steps : []).filter((step) => step && typeof step === 'object'),
+      checks: (Array.isArray(item.checks) ? item.checks : []).filter((check) => check && typeof check === 'object'),
+      followups: Array.isArray(item.followups) ? item.followups : [],
+    }))
+}
+
+function repairStudySets(items) {
+  return (Array.isArray(items) ? items : [])
+    .filter((pack) => pack && typeof pack === 'object')
+    .map((pack) => ({
+      ...pack,
+      id: pack.id || createId('pack'),
+      title: typeof pack.title === 'string' && pack.title.trim() ? pack.title : 'Study set',
+      createdAt: pack.createdAt || new Date().toISOString(),
+      flashcards: (Array.isArray(pack.flashcards) ? pack.flashcards : []).filter((card) => card && typeof card === 'object'),
+      quiz: (Array.isArray(pack.quiz) ? pack.quiz : []).filter((question) => question && typeof question === 'object'),
+      guide: pack.guide && typeof pack.guide === 'object' ? pack.guide : null,
+    }))
+}
+
+function repairNotes(items) {
+  return (Array.isArray(items) ? items : [])
+    .filter((note) => note && typeof note === 'object')
+    .map((note) => ({
+      ...note,
+      id: note.id || createId('note'),
+      createdAt: note.createdAt || new Date().toISOString(),
+      summary: typeof note.summary === 'string' ? note.summary : '',
+      keyPoints: Array.isArray(note.keyPoints) ? note.keyPoints : [],
+      keywords: Array.isArray(note.keywords) ? note.keywords : [],
+      actionItems: Array.isArray(note.actionItems) ? note.actionItems : [],
+    }))
+}
+
 function normalizeState(saved) {
+  const repairedSets = repairStudySets(saved?.studySets)
   return {
     ...defaultState,
     ...saved,
     user: null,
     settings: { ...defaultState.settings, ...(saved?.settings || {}) },
     onboarding: { ...defaultState.onboarding, ...(saved?.onboarding || {}) },
-    history: Array.isArray(saved?.history) ? saved.history : [],
-    studySets: Array.isArray(saved?.studySets) && saved.studySets.length ? saved.studySets : starterState().studySets,
-    notes: Array.isArray(saved?.notes) ? saved.notes : [],
-    research: Array.isArray(saved?.research) ? saved.research : [],
-    exams: Array.isArray(saved?.exams) ? saved.exams : [],
+    history: repairHistory(saved?.history),
+    studySets: repairedSets.length ? repairedSets : starterState().studySets,
+    notes: repairNotes(saved?.notes),
+    research: (Array.isArray(saved?.research) ? saved.research : []).filter((item) => item && typeof item === 'object'),
+    exams: (Array.isArray(saved?.exams) ? saved.exams : []).filter((item) => item && typeof item === 'object'),
   }
 }
 
@@ -70,6 +121,59 @@ function loadState() {
   }
 }
 
+/**
+ * Solutions are kept in history, persisted to localStorage, and synced to the
+ * account. Attachments must therefore stay small: a cropped screenshot is a
+ * multi-megabyte data URL, which would blow the ~5 MB storage budget and the
+ * server's workspace limit. Keep only the descriptive fields.
+ */
+export function slimSolution(solution) {
+  if (!solution || typeof solution !== 'object') return solution
+  const attachments = Array.isArray(solution.attachments)
+    ? solution.attachments.map((item) => ({
+      id: item.id,
+      name: item.name,
+      type: item.type,
+      size: item.size,
+      pages: item.pages,
+      characters: item.characters,
+      isImage: Boolean(item.isImage),
+      isLink: Boolean(item.isLink),
+      url: item.isLink ? item.url : undefined,
+    }))
+    : []
+  return { ...solution, attachments }
+}
+
+/** Rough UTF-8 size without allocating a TextEncoder buffer. */
+function payloadBytes(value) {
+  const text = JSON.stringify(value)
+  if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(text).length
+  return text.length * 2
+}
+
+/**
+ * Keep the synced payload inside the server's workspace budget instead of
+ * failing the whole sync. Oldest history/notes/research are dropped first.
+ */
+export function fitWorkspace(payload, maxBytes = 1_900_000) {
+  const next = { ...payload }
+  let dropped = 0
+  const shrink = (key, keep) => {
+    if (Array.isArray(next[key]) && next[key].length > keep) {
+      dropped += next[key].length - keep
+      next[key] = next[key].slice(0, keep)
+      return true
+    }
+    return false
+  }
+  if (payloadBytes(next) <= maxBytes) return { payload: next, dropped }
+  shrink('history', 12) || shrink('notes', 12) || shrink('research', 8) || shrink('studySets', 8) || shrink('exams', 6)
+  if (payloadBytes(next) <= maxBytes) return { payload: next, dropped }
+  shrink('history', 5) || shrink('notes', 5) || shrink('research', 4) || shrink('studySets', 4) || shrink('exams', 3)
+  return { payload: next, dropped }
+}
+
 export function workspacePayload(state) {
   return SYNC_KEYS.reduce((payload, key) => {
     if (key in state) payload[key] = state[key]
@@ -91,11 +195,24 @@ export function AppProvider({ children }) {
   const lastSyncedRef = useRef('')
   const hydratedRef = useRef(false)
 
+  // Persist locally, trimming the oldest history if the browser quota is hit so
+  // new work is never silently lost.
+  const warnedQuotaRef = useRef(false)
   useEffect(() => {
+    const save = (value) => window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...value, user: null }))
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, user: null }))
+      save(state)
     } catch {
-      // Storage may be unavailable in private browsing; the app still works in memory.
+      try {
+        const trimmed = { ...state, history: state.history.slice(0, 5), notes: state.notes.slice(0, 5), research: state.research.slice(0, 3) }
+        save(trimmed)
+        if (!warnedQuotaRef.current) {
+          warnedQuotaRef.current = true
+          setToasts((items) => [...items, { id: createId('toast'), message: 'Browser storage is full, so older items were dropped from this device.', type: 'error' }])
+        }
+      } catch {
+        // Private browsing or blocked storage: the app still works in memory.
+      }
     }
   }, [state])
 
@@ -103,23 +220,37 @@ export function AppProvider({ children }) {
   // accounts stay on the device and AI needs a browser-usable provider.
   const [backend, setBackend] = useState(() => {
     const snapshot = getBackendState()
-    return { checked: snapshot.checked, available: snapshot.available, info: snapshot.info }
+    return { checked: snapshot.checked, available: snapshot.available, info: snapshot.info, error: snapshot.error, retrying: snapshot.retrying }
   })
 
   useEffect(() => {
     let active = true
     const unsubscribe = subscribeBackend((next) => {
       if (!active) return
-      setBackend({ checked: next.checked, available: next.available, info: next.info })
+      setBackend({ checked: next.checked, available: next.available, info: next.info, error: next.error, retrying: next.retrying })
     })
     probeBackend().then((snapshot) => {
       if (!active) return
       // A cached probe resolves without publishing, so copy the result here.
-      setBackend({ checked: snapshot.checked, available: snapshot.available, info: snapshot.info })
+      setBackend({ checked: snapshot.checked, available: snapshot.available, info: snapshot.info, error: snapshot.error, retrying: snapshot.retrying })
     })
+
+    // A sleeping free-tier server wakes while the tab is hidden. Re-check when
+    // the user comes back instead of leaving them on a stale "no server" state.
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      const snapshot = getBackendState()
+      if (!snapshot.available) retryBackend()
+    }
+    const onOnline = () => retryBackend()
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('online', onOnline)
+
     return () => {
       active = false
       unsubscribe()
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('online', onOnline)
     }
   }, [])
 
@@ -167,7 +298,8 @@ export function AppProvider({ children }) {
 
   useEffect(() => {
     if (!hydratedRef.current || auth.status !== 'authenticated') return undefined
-    const payload = workspacePayload(state)
+    const { payload: fitted } = fitWorkspace(workspacePayload(state))
+    const payload = fitted
     const serialized = JSON.stringify(payload)
     if (serialized === lastSyncedRef.current) return undefined
 
@@ -248,7 +380,10 @@ export function AppProvider({ children }) {
     }
     try {
       setAuth((current) => ({ ...current, syncState: 'saving' }))
-      const payload = workspacePayload(state)
+      const { payload, dropped } = fitWorkspace(workspacePayload(state))
+      if (dropped > 0) {
+        toast(`Workspace is large, so ${dropped} of the oldest items stay on this device only.`, 'error')
+      }
       const result = await accounts.saveWorkspace(payload)
       lastSyncedRef.current = JSON.stringify(payload)
       setAuth((current) => ({ ...current, syncState: 'synced', syncedAt: result.syncedAt, error: '' }))
@@ -299,15 +434,17 @@ export function AppProvider({ children }) {
   }, [state.plan, state.solvesUsed])
 
   const consumeSolve = useCallback((solution) => {
+    const slim = slimSolution(solution)
     patch((current) => ({
       ...current,
       solvesUsed: current.solvesUsed + 1,
-      history: [solution, ...current.history].slice(0, 30),
+      history: [slim, ...current.history].slice(0, 30),
     }))
   }, [patch])
 
   const addHistory = useCallback((solution) => {
-    patch((current) => ({ ...current, history: [solution, ...current.history.filter((item) => item.id !== solution.id)].slice(0, 30) }))
+    const slim = slimSolution(solution)
+    patch((current) => ({ ...current, history: [slim, ...current.history.filter((item) => item.id !== solution.id)].slice(0, 30) }))
   }, [patch])
 
   const deleteHistory = useCallback((id) => {
@@ -381,6 +518,7 @@ export function AppProvider({ children }) {
     backend,
     hasBackend: backend.available,
     isStaticPreview: backend.checked && !backend.available,
+    retryServer: retryBackend,
     toasts,
     removeToast,
     toast,

@@ -7,6 +7,8 @@
  * provider is ever called from the page itself.
  */
 
+import { clearSessionToken, getSessionToken } from './sessionToken'
+
 const STORAGE_KEY = 'wesolve-server-url-v1'
 // Vite replaces this at build time; it is the default server for the build.
 const envBase = import.meta.env.VITE_API_BASE || ''
@@ -56,6 +58,8 @@ export function apiUrl(path) {
 
 export function setServerUrl(url) {
   const next = normalize(url)
+  // A session belongs to one server; drop it when the target changes.
+  if (next !== cached) clearSessionToken()
   cached = next
   try {
     if (next) window.localStorage.setItem(STORAGE_KEY, next)
@@ -69,8 +73,13 @@ export function setServerUrl(url) {
 
 /**
  * Fetch options shared by every API call. Cookies must be sent cross-origin
- * for the session to work when the API lives on another host.
+ * for the session to work when the API lives on another host, and the bearer
+ * token covers browsers that refuse to send third-party cookies.
  */
 export function apiInit(init = {}) {
-  return { credentials: 'include', mode: 'cors', ...init }
+  const { headers, ...rest } = init
+  const token = getSessionToken(getServerUrl())
+  const merged = { ...(headers || {}) }
+  if (token && !merged.Authorization) merged.Authorization = `Bearer ${token}`
+  return { credentials: 'include', mode: 'cors', ...rest, headers: merged }
 }

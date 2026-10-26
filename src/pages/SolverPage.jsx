@@ -18,9 +18,20 @@ import { getServiceSettings, maskKey } from '../lib/serviceSettings'
  * and if not, exactly why? AI is answered by the WeSolve server, never by the
  * page itself, so this reports the server connection.
  */
-function AiModeBanner({ version, hasBackend, isStaticPreview, onOpenSettings }) {
+function AiModeBanner({ version, hasBackend, isStaticPreview, onOpenSettings, onRetry, retrying }) {
   const settings = useMemo(() => getServiceSettings(), [version])
   const hasKey = Boolean(settings.nvidiaApiKey)
+
+  if (!hasBackend && retrying) {
+    return (
+      <div className="ai-mode ai-mode-off">
+        <span className="ai-mode-dot" />
+        <strong>Connecting to your server…</strong>
+        <span>Free hosting sleeps when idle and can take up to a minute to wake.</span>
+        <button type="button" onClick={onRetry}>Retry now</button>
+      </div>
+    )
+  }
 
   if (!hasBackend) {
     return (
@@ -32,6 +43,7 @@ function AiModeBanner({ version, hasBackend, isStaticPreview, onOpenSettings }) 
             ? 'This preview has no WeSolve server, so answers come from the built-in solver. Add your server URL to get AI answers.'
             : 'The WeSolve server is unreachable, so answers come from the built-in solver.'}
         </span>
+        {!isStaticPreview && <button type="button" onClick={onRetry}>Retry</button>}
         <button type="button" onClick={onOpenSettings}>Connect server</button>
       </div>
     )
@@ -196,6 +208,8 @@ export default function SolverPage() {
     setServiceSettingsOpen,
     hasBackend,
     isStaticPreview,
+    backend,
+    retryServer,
   } = useApp()
   const [input, setInput] = useState('')
   const [mode, setMode] = useState('solve')
@@ -454,6 +468,8 @@ export default function SolverPage() {
         version={serviceSettingsVersion}
         hasBackend={hasBackend}
         isStaticPreview={isStaticPreview}
+        retrying={backend.retrying}
+        onRetry={retryServer}
         onOpenSettings={() => setServiceSettingsOpen(true)}
       />
 

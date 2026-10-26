@@ -1082,7 +1082,7 @@ export default function TutorPage() {
  * names that limit instead of pretending to know the wider subject.
  */
 function buildLocalTutorAnswer(question, lesson, step, content) {
-  const lower = question.toLowerCase()
+  const lower = String(question || '').toLowerCase()
   const board = content.lines.filter(Boolean)
   const lead = board[0] || step.board
   const note = step.note || ''

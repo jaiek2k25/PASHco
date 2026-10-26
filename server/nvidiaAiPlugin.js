@@ -59,8 +59,22 @@ function parseCookies(header = '') {
   return result
 }
 
+/** Cookie first, then `Authorization: Bearer` for cross-site pages. */
+function sessionFrom(req) {
+  const header = req.headers.authorization
+  if (header) {
+    const value = Array.isArray(header) ? header[0] : header
+    const match = /^Bearer\s+(.+)$/i.exec(String(value).trim())
+    if (match) {
+      const fromToken = readSession(match[1])
+      if (fromToken) return fromToken
+    }
+  }
+  return readSession(parseCookies(req.headers.cookie).wesolve_session)
+}
+
 function callerIdentity(req) {
-  const user = readSession(parseCookies(req.headers.cookie).wesolve_session)
+  const user = sessionFrom(req)
   if (user) return { id: `user:${user.id}`, tier: 'account' }
   const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()
   return { id: `ip:${forwarded || req.socket?.remoteAddress || 'unknown'}`, tier: 'anonymous' }
@@ -258,7 +272,7 @@ function headerKey(req) {
  *   3. an opt-in shared server key, only when WESOLVE_SHARED_KEY=true
  */
 function resolveCredentials(req, env) {
-  const sessionUser = readSession(parseCookies(req.headers.cookie).wesolve_session)
+  const sessionUser = sessionFrom(req)
   const account = sessionUser
     ? getAiCredentials(sessionUser)
     : { key: '', baseUrl: '', model: '', visionModel: '' }
@@ -292,6 +306,34 @@ function buildMessages(task, payload) {
     { role: 'system', content: `${config.system}\n\n${config.schema}` },
     { role: 'user', content: `Task: ${task}\n\nUse this data:\n${context}` },
   ]
+}
+
+// A provider (or a base URL that was pasted from an untrustworthy page) could
+// stream an unbounded reply. Refusing anything past this keeps one request from
+// eating the server's memory.
+const MAX_UPSTREAM_BYTES = 4_000_000
+
+async function readCappedText(response) {
+  const declared = Number(response.headers.get('content-length') || 0)
+  if (declared > MAX_UPSTREAM_BYTES) {
+    throw Object.assign(new Error('The AI provider sent an oversized response.'), { code: 'UPSTREAM_TOO_LARGE' })
+  }
+  if (!response.body) return await response.text()
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let text = ''
+  let bytes = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    bytes += value.byteLength
+    if (bytes > MAX_UPSTREAM_BYTES) {
+      try { await reader.cancel() } catch { /* already closed */ }
+      throw Object.assign(new Error('The AI provider sent an oversized response.'), { code: 'UPSTREAM_TOO_LARGE' })
+    }
+    text += decoder.decode(value, { stream: true })
+  }
+  return text + decoder.decode()
 }
 
 export function createAiHandler(env = {}) {
@@ -423,6 +465,9 @@ export function createAiHandler(env = {}) {
           'Content-Type': 'application/json',
           Accept: 'application/json',
         },
+        // Following a redirect would let a public endpoint bounce the request
+        // into a private address, so redirects are reported, never followed.
+        redirect: 'manual',
         body: JSON.stringify({
           model: safeString(body.model || model, 200),
           messages,
@@ -434,7 +479,24 @@ export function createAiHandler(env = {}) {
         signal: controller.signal,
       })
 
-      const rawText = await upstream.text()
+      if (upstream.status >= 300 && upstream.status < 400) {
+        sendJson(res, 502, {
+          error: 'That API base URL redirects somewhere else. Save the final URL in Settings and try again.',
+          code: 'UPSTREAM_REDIRECT',
+        })
+        return
+      }
+
+      let rawText
+      try {
+        rawText = await readCappedText(upstream)
+      } catch (error) {
+        if (error.code === 'UPSTREAM_TOO_LARGE') {
+          sendJson(res, 502, { error: error.message, code: 'UPSTREAM_TOO_LARGE' })
+          return
+        }
+        throw error
+      }
       let upstreamData = {}
       try {
         upstreamData = JSON.parse(rawText)
@@ -443,7 +505,7 @@ export function createAiHandler(env = {}) {
       }
 
       if (!upstream.ok) {
-        const detail = upstreamData?.detail || upstreamData?.message || upstreamData?.error?.message || `NVIDIA returned HTTP ${upstream.status}.`
+        const detail = upstreamData?.detail || upstreamData?.message || upstreamData?.error?.message || `The AI provider returned HTTP ${upstream.status}.`
         sendJson(res, upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502, {
           error: 'The AI provider rejected the request.',
           detail: safeString(detail, 500),
@@ -475,7 +537,7 @@ export function createAiHandler(env = {}) {
       })
     } catch (error) {
       sendJson(res, 504, {
-        error: error.name === 'AbortError' ? 'The NVIDIA request timed out.' : 'Could not reach the NVIDIA API.',
+        error: error.name === 'AbortError' ? 'The AI provider took too long to answer (90 s).' : 'Could not reach the AI provider. Check the API base URL in Settings.',
         detail: safeString(error.message, 300),
         code: error.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK_ERROR',
       })

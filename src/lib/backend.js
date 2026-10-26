@@ -8,11 +8,19 @@
 
 import { apiInit, apiUrl, getServerUrl } from './apiBase'
 
-const PROBE_TIMEOUT_MS = 6000
+// Free hosts (Render, Fly) stop idle instances and take 30-60 s to wake, so the
+// first probe waits longer and failures are retried in the background instead of
+// leaving the app stuck in "no server" for the rest of the session.
+const FIRST_PROBE_TIMEOUT_MS = 20000
+const PROBE_TIMEOUT_MS = 8000
 const CACHE_MS = 60_000
+const RETRY_DELAYS_MS = [8000, 20000, 45000]
 
-let state = { checked: false, available: false, checkedAt: 0, info: null, server: '' }
+let state = { checked: false, available: false, checkedAt: 0, info: null, server: '', error: '', retrying: false }
 let inflight = null
+let retryTimer = null
+let retryIndex = 0
+let everProbed = false
 const listeners = new Set()
 
 function publish(next) {
@@ -35,9 +43,33 @@ export function subscribeBackend(listener) {
   return () => listeners.delete(listener)
 }
 
+function cancelRetry() {
+  if (retryTimer) {
+    clearTimeout(retryTimer)
+    retryTimer = null
+  }
+  retryIndex = 0
+}
+
+function scheduleRetry() {
+  // Only worth retrying when a server was actually configured.
+  if (!getServerUrl() || retryIndex >= RETRY_DELAYS_MS.length) return
+  const delay = RETRY_DELAYS_MS[retryIndex]
+  retryIndex += 1
+  if (retryTimer) clearTimeout(retryTimer)
+  retryTimer = setTimeout(() => {
+    retryTimer = null
+    publish({ ...state, retrying: true })
+    probeBackend({ force: true, silent: true })
+  }, delay)
+  if (typeof window !== 'undefined') publish({ ...state, retrying: true })
+}
+
 async function requestProbe() {
+  const timeoutMs = everProbed ? PROBE_TIMEOUT_MS : FIRST_PROBE_TIMEOUT_MS
+  everProbed = true
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
-  const timer = controller ? setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS) : null
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null
   try {
     const response = await fetch(apiUrl('/api/ai/health'), apiInit({
       method: 'GET',
@@ -71,17 +103,34 @@ async function requestProbe() {
 }
 
 /** Resolve once, then reuse the answer briefly so app boot stays cheap. */
-export function probeBackend({ force = false } = {}) {
+export function probeBackend({ force = false, silent = false } = {}) {
   const fresh = state.checked && Date.now() - state.checkedAt < CACHE_MS
   if (fresh && !force) return Promise.resolve(state)
   if (inflight) return inflight
   const server = getServerUrl()
+  if (!silent) cancelRetry()
   inflight = requestProbe().then(({ available, info, error }) => {
-    publish({ checked: true, available, checkedAt: Date.now(), info, server, error: available ? '' : error || '' })
+    publish({
+      checked: true,
+      available,
+      checkedAt: Date.now(),
+      info,
+      server,
+      error: available ? '' : error || '',
+      retrying: available ? false : Boolean(retryTimer),
+    })
     inflight = null
+    if (available) cancelRetry()
+    else scheduleRetry()
     return state
   })
   return inflight
+}
+
+/** Try again now (used by "Retry" buttons and when the tab regains focus). */
+export function retryBackend() {
+  cancelRetry()
+  return probeBackend({ force: true })
 }
 
 /** True when the last probe found a server. Undefined before the first probe. */
@@ -101,7 +150,8 @@ export function markBackendMissing() {
 
 /** Forget the cached answer, e.g. after the user enters a server URL. */
 export function resetBackendProbe() {
-  state = { checked: false, available: false, checkedAt: 0, info: null, server: getServerUrl(), error: '' }
+  cancelRetry()
+  state = { checked: false, available: false, checkedAt: 0, info: null, server: getServerUrl(), error: '', retrying: false }
   inflight = null
   publish(state)
 }

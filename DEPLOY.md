@@ -66,10 +66,34 @@ fly open
 
 1. Push this repo to GitHub (already done).
 2. Render dashboard → **New → Blueprint** → select the repo. `render.yaml` is detected.
-3. Enter `NVIDIA_API_KEY` when prompted; Render generates `WESOLVE_SESSION_SECRET`.
-4. Apply. The disk `wesolve-data` is mounted at `/var/data`.
+3. Apply. Render generates `WESOLVE_SESSION_SECRET` for you.
+4. When the deploy finishes, open the URL Render shows (`https://<service>.onrender.com`).
 
-The blueprint uses the `starter` plan because Render's free tier does not allow a disk.
+**No key is requested and none is needed**: each user pastes their own AI key in
+**Connect AI**, and the server makes the provider call.
+
+The blueprint uses `plan: free`, so the disk is ephemeral — accounts and synced
+workspaces are lost when the instance restarts or redeploys. To keep them, switch
+the service to `plan: starter` and uncomment the disk block at the bottom of
+`render.yaml` (mount path `/var/data`, then add
+`WESOLVE_DATA_DIR=/var/data` as an environment variable).
+
+### Check a Render deploy in 60 seconds
+
+1. Open `https://<service>.onrender.com/api/ai/health` → must return
+   `{"ok":true,"service":"wesolve",...}`.
+2. Open `https://<service>.onrender.com/` → the app loads; the composer badge
+   must **not** say *Offline engine*.
+3. Sign up with any email → you land back in the workspace, and
+   `<service>.onrender.com/api/auth/me` shows `{"user":{...}}`.
+4. **Connect AI → API key** → paste your provider key → **Test connection**.
+
+If `/api/ai/health` returns HTML or 404, the service was created as a **Static
+Site**; delete it and create a **Web Service** (or use the Blueprint), because a
+static host serves files only and cannot answer `/api/*`.
+
+A free instance sleeps after ~15 minutes idle and takes up to a minute to wake.
+The app shows *Connecting to your server…* and retries on its own.
 
 ## Option 3 — Railway / any container host
 
@@ -145,6 +169,8 @@ It is the address Render/Fly/Docker gives you after the deploy finishes — the
 same URL where the app itself opens, with no path:
 
 - Render: the service page header, e.g. `https://wesolve-xxxx.onrender.com`
+  (the app deployed *by* that service needs no URL at all — open it directly and
+  it talks to its own origin)
 - Fly: `fly status` → Hostname, e.g. `https://wesolve.fly.dev`
 - Docker/VPS: whatever you expose, e.g. `https://study.example.com`
 - Local: `http://localhost:3000`
